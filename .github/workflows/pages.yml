@@ -1,4 +1,5 @@
-# Builds the map and publishes it to GitHub Pages on every push to main.
+# Builds the map and publishes it to the gh-pages branch, which GitHub Pages serves
+# at https://sultonmusic.github.io/cavi-maps/. Runs on every push to main.
 name: Deploy Cavi Maps to GitHub Pages
 
 on:
@@ -7,16 +8,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,16 +31,8 @@ jobs:
           ATLAS_BASE: /cavi-maps/
       # Pages has no rewrites: /cavi-maps/admin falls through to 404.html, which is the app itself.
       - run: cp dist/index.html dist/404.html && touch dist/.nojekyll
-      - uses: actions/upload-pages-artifact@v3
+      - uses: JamesIves/github-pages-deploy-action@v4
         with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          branch: gh-pages
+          folder: dist
+          single-commit: true

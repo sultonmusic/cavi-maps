@@ -16,7 +16,8 @@ npm run build      # dist/ + offline manifest
 ```
 
 `ATLAS_BASE=/cavi-maps/ npm run build` produces the GitHub Pages copy. Every push to `main`
-rebuilds and publishes it via `.github/workflows/pages.yml`.
+rebuilds it via `.github/workflows/pages.yml` into the `gh-pages` branch;
+`bash scripts/deploy-gh-pages.sh` does the same from a local machine.
 
 ## Where things are
 

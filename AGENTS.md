@@ -27,5 +27,7 @@ node scripts/check-routing.mjs --real
 
 `scripts/check-planner.mjs` is an old harness that fails regardless of changes — ignore it.
 
-Pushing to `main` redeploys https://sultonmusic.github.io/cavi-maps/ automatically
-(watch the **Actions** tab). Prefer small commits with clear messages.
+Pushing to `main` rebuilds https://sultonmusic.github.io/cavi-maps/ through GitHub Actions
+(`.github/workflows/pages.yml` writes the `gh-pages` branch; watch the **Actions** tab).
+If Actions cannot run, publish from a local checkout with `bash scripts/deploy-gh-pages.sh`.
+Never edit the `gh-pages` branch by hand — it is generated. Prefer small commits with clear messages.
