@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function admin() { return request.auth != null && (request.auth.token.get('admin', false) == true || request.auth.uid == 'q6vGDrPp4vdOiz41MzZfjAa0tb32'); }
+    function nonempty(value, maximum) { return value is string && value.size() > 0 && value.size() <= maximum && !value.matches('.*[<>].*'); }
+    function optionalText(value, maximum) { return value is string && value.size() <= maximum && !value.matches('.*[<>].*'); }
+    function location(data) { return data.lat is number && data.lon is number && data.lat >= 35.5 && data.lat <= 42 && data.lon >= 66 && data.lon <= 76.5; }
+    function businessVisible(businessId) { let business = get(/databases/$(database)/documents/businesses/$(businessId)); return business.data.published == true && business.data.reviewsEnabled == true; }
+    match /roadEdits/{id} {
+      allow read: if true;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['roadId','name','asphalt','updatedAt']) && nonempty(request.resource.data.roadId,150) && (!('name' in request.resource.data) || nonempty(request.resource.data.name,200)) && (!('asphalt' in request.resource.data) || request.resource.data.asphalt == null || request.resource.data.asphalt in [0,1,2,3,4,5,6]) && request.resource.data.updatedAt is number;
+      allow delete: if admin();
+    }
+    match /districtEdits/{id} {
+      allow read: if true;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['districtId','name','updatedAt']) && nonempty(request.resource.data.districtId,150) && nonempty(request.resource.data.name,200) && request.resource.data.updatedAt is number;
+      allow delete: if admin();
+    }
+    match /businesses/{id} {
+      allow read: if admin() || resource.data.published == true;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['id','name','lat','lon','category','info','phone','email','website','address','hours','menu','reviewsEnabled','published','updatedAt']) && request.resource.data.id == id && nonempty(request.resource.data.name,200) && location(request.resource.data) && nonempty(request.resource.data.category,80) && optionalText(request.resource.data.info,5000) && optionalText(request.resource.data.phone,80) && optionalText(request.resource.data.email,250) && optionalText(request.resource.data.website,500) && (request.resource.data.website == '' || request.resource.data.website.matches('https?://.*')) && optionalText(request.resource.data.address,500) && optionalText(request.resource.data.hours,500) && request.resource.data.menu is list && request.resource.data.menu.size() <= 100 && request.resource.data.reviewsEnabled is bool && request.resource.data.published is bool && request.resource.data.updatedAt is number;
+      allow delete: if admin();
+    }
+    match /buildingEdits/{id} {
+      allow read: if true;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['id','name','geometry','source','height','levels','roof','updatedAt']) && request.resource.data.id == id && request.resource.data.source == 'admin' && (!('name' in request.resource.data) || optionalText(request.resource.data.name,200)) && request.resource.data.geometry is map && request.resource.data.geometry.keys().hasOnly(['type','coordinatesJson']) && request.resource.data.geometry.type == 'Polygon' && request.resource.data.geometry.coordinatesJson is string && request.resource.data.geometry.coordinatesJson.size() >= 12 && request.resource.data.geometry.coordinatesJson.size() <= 100000 && request.resource.data.geometry.coordinatesJson.matches('[0-9eE+.,\\[\\] -]+') && (!('height' in request.resource.data) || (request.resource.data.height is number && request.resource.data.height >= 0 && request.resource.data.height <= 1000)) && (!('levels' in request.resource.data) || (request.resource.data.levels is int && request.resource.data.levels >= 1 && request.resource.data.levels <= 60)) && (!('roof' in request.resource.data) || request.resource.data.roof in ['gabled','hipped','pyramidal']) && request.resource.data.updatedAt is number;
+      allow delete: if admin();
+    }
+    match /buildingInfo/{id} {
+      allow read: if true;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['key','levels','height','roof','updatedAt']) && request.resource.data.key is string && request.resource.data.key.matches('ms:[0-9]+|osm:(way|relation)/[0-9]+') && ('levels' in request.resource.data || 'height' in request.resource.data || 'roof' in request.resource.data) && (!('levels' in request.resource.data) || (request.resource.data.levels is int && request.resource.data.levels >= 1 && request.resource.data.levels <= 60)) && (!('height' in request.resource.data) || (request.resource.data.height is number && request.resource.data.height >= 1 && request.resource.data.height <= 500)) && (!('roof' in request.resource.data) || request.resource.data.roof in ['gabled','hipped','pyramidal']) && request.resource.data.updatedAt is number;
+      allow delete: if admin();
+    }
+    match /cityObjects/{id} {
+      allow read: if true;
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['id','kind','name','geometry','width','height','length','thickness','rotation','surface','updatedAt']) && request.resource.data.id == id && request.resource.data.kind in ['path','square','lawn','fountain','flag','monument','lamp','bench','tree','bin'] && (!('name' in request.resource.data) || optionalText(request.resource.data.name,200)) && request.resource.data.geometry is map && request.resource.data.geometry.keys().hasOnly(['type','coordinatesJson']) && request.resource.data.geometry.type in ['Point','LineString','Polygon'] && request.resource.data.geometry.coordinatesJson is string && request.resource.data.geometry.coordinatesJson.size() >= 5 && request.resource.data.geometry.coordinatesJson.size() <= 100000 && request.resource.data.geometry.coordinatesJson.matches('[0-9eE+.,\\[\\] -]+') && (!('width' in request.resource.data) || (request.resource.data.width is number && request.resource.data.width >= 0.3 && request.resource.data.width <= 100)) && (!('height' in request.resource.data) || (request.resource.data.height is number && request.resource.data.height >= 1 && request.resource.data.height <= 80)) && (!('length' in request.resource.data) || (request.resource.data.length is number && request.resource.data.length >= 0.5 && request.resource.data.length <= 30)) && (!('thickness' in request.resource.data) || (request.resource.data.thickness is number && request.resource.data.thickness >= 0.05 && request.resource.data.thickness <= 2)) && (!('rotation' in request.resource.data) || (request.resource.data.rotation is number && request.resource.data.rotation >= 0 && request.resource.data.rotation <= 360)) && (!('surface' in request.resource.data) || request.resource.data.surface in ['plain','tiles','asphalt']) && request.resource.data.updatedAt is number;
+      allow delete: if admin();
+    }
+    match /reviews/{id} {
+      allow read: if admin() || (resource.data.status == 'approved' && businessVisible(resource.data.businessId));
+      allow create: if request.auth != null && request.resource.data.keys().hasOnly(['id','businessId','name','rating','text','status','createdAt','authorUid']) && request.resource.data.id == id && request.resource.data.authorUid == request.auth.uid && nonempty(request.resource.data.businessId,150) && businessVisible(request.resource.data.businessId) && nonempty(request.resource.data.name,100) && nonempty(request.resource.data.text,2000) && request.resource.data.rating is int && request.resource.data.rating >= 1 && request.resource.data.rating <= 5 && request.resource.data.status == 'pending' && request.resource.data.createdAt == request.time;
+      allow update: if admin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt']) && request.resource.data.status in ['pending','approved','rejected'] && request.resource.data.updatedAt is number;
+      allow delete: if admin();
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

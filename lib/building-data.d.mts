@@ -1,0 +1,10 @@
+export type RoofShape = 'gabled' | 'hipped' | 'pyramidal';
+export type ValidatedBuilding = { id: string; name: string; geometry: { type: 'Polygon'; coordinates: number[][][] }; source: 'admin'; updatedAt: number; height?: number; levels?: number; roof?: RoofShape };
+export type CloudBuilding = Omit<ValidatedBuilding, 'geometry'> & { geometry: { type: 'Polygon'; coordinatesJson: string } };
+export type ValidatedBuildingInfo = { key: string; updatedAt: number; levels?: number; height?: number; roof?: RoofShape };
+export const ROOF_SHAPES: readonly RoofShape[];
+export function buildingKey(value: unknown): string;
+export function validateBuildingInfo(input: unknown): ValidatedBuildingInfo;
+export function validateBuilding(input: unknown): ValidatedBuilding;
+export function encodeCloudBuilding(input: unknown): CloudBuilding;
+export function decodeCloudBuilding(input: unknown): ValidatedBuilding;

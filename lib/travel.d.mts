@@ -1,0 +1,11 @@
+export type Mode = 'foot' | 'bike' | 'scooter' | 'car' | 'bus' | 'taxi';
+export type Network = 'foot' | 'bike' | 'car';
+export const MODES: readonly Mode[];
+export const MODE_LABELS: Readonly<Record<Mode, string>>;
+export const MODE_SPEEDS: Readonly<Record<Mode, number>>;
+export const MODE_NETWORK: Readonly<Record<Mode, Network>>;
+export function isMode(value: unknown): value is Mode;
+export function keepRight(mode: Mode, shift: number, half: number): number;
+export function spokenDistance(metres: number): string;
+export function turnPrompt(kind: string, metres: number, mode: Mode): { stage: 1 | 2 | 3; text: string } | null;
+export function arrivalPhrase(atDestination: boolean): string;

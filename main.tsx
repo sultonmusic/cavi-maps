@@ -1,0 +1,11 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {siteUrl} from './lib/site-url';
+import Home from './app/page';
+import Admin from './app/admin';
+import './app/admin.css';
+import './app/business.css';
+import './app/globals.css';
+const isAdmin=location.pathname.replace(/\/$/,'')===siteUrl('/admin')||location.hostname==='capline-tj-map-admin.web.app'||location.hostname==='capline-tj-map-admin.firebaseapp.com';
+createRoot(document.getElementById('root')!).render(isAdmin?<Admin/>:<Home/>);
+import './app/navigation.css';
