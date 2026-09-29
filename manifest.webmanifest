@@ -1,0 +1,20 @@
+{
+  "name": "Cavi Maps — карта Таджикистана",
+  "short_name": "Cavi Maps",
+  "description": "Карта Таджикистана с 3D-домами, поиском мест, улиц и дорог, маршрутами и навигатором. Работает без интернета. by Capline Group",
+  "lang": "ru",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#00866a",
+  "categories": ["navigation", "travel"],
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+    {"src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}
+  ]
+}

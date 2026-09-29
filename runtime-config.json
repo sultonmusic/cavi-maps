@@ -1,0 +1,11 @@
+{
+  "firebase": {
+    "projectId": "capline-tj-map",
+    "appId": "1:651223864791:web:22cf19508cea80f5436792",
+    "apiKey": "AIzaSyDqFUg0xFvaVZZqCDjRMIKKH62Egk7Y-Pw",
+    "authDomain": "capline-tj-map.firebaseapp.com"
+  },
+  "adminUsername": "CaplineGroup-map",
+  "adminEmail": "caplinegroup-map@capline-tj-map.invalid",
+  "adminUid": "q6vGDrPp4vdOiz41MzZfjAa0tb32"
+}
