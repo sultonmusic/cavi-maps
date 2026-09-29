@@ -13,6 +13,7 @@ import {poiNearby,poiStyle} from '@/lib/poi-icons.mjs';
 import {poiPinSvg} from '@/lib/poi-draw';
 import {floorsLabel,floorsOf} from '@/lib/building-ray.mjs';
 import {isShaydonKey} from '@/lib/building-pick';
+import {onProfileChange,readBuildingDetail} from '@/lib/profile-store';
 import {cityAt} from '@/lib/cities.mjs';
 import type {Marker} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -81,13 +82,15 @@ fetch(siteUrl('/districts.json')).then(r=>r.ok?r.json():null).then(d=>{if(!cance
 fetch(siteUrl('/shaydon-buildings.json')).then(r=>r.ok?r.json():null).then(d=>{if(!cancelled&&d)setBuildingData(d)}).catch(()=>{});
 fetch(siteUrl('/shaydon-osm-buildings.json')).then(r=>r.ok?r.json():null).then(d=>{if(!cancelled&&d)atlas.current?.setOsmBuildings(d.buildings)}).catch(()=>{});
 baseLabels().then(list=>{if(!cancelled)setShippedLabels(list)}).catch(()=>{if(!cancelled)setError('Названия не загрузились. Обновите страницу.')});
-if(node.current){atlas.current=createAtlasGL(node.current,setError);
+if(node.current){atlas.current=createAtlasGL(node.current,setError);atlas.current.setBuildingDetail(readBuildingDetail());
  try{const last=JSON.parse(localStorage.getItem('atlas-view')||'null');
   if(last&&Number.isFinite(last.center?.[0])&&Number.isFinite(last.center?.[1]))
    atlas.current.map.jumpTo({center:last.center,zoom:last.zoom??15,bearing:last.bearing??0,pitch:last.pitch??0})}catch{}
  setReady(true);atlas.current.ready.catch(()=>{if(!cancelled)setError('Не удалось загрузить карту. Обновите страницу.')})}
 return()=>{cancelled=true;destinationMarker.current?.remove();locationMarker.current?.remove();atlas.current?.destroy();atlas.current=null}},[]);
 useEffect(()=>{if(buildingData)atlas.current?.setBuildings(buildingData)},[buildingData]);
+// Profile switch «Подробные здания»: windows, roofs and street trees close in.
+useEffect(()=>onProfileChange(()=>atlas.current?.setBuildingDetail(readBuildingDetail())),[]);
 const roadNames=useMemo(()=>Object.fromEntries(Object.values(live.state.roads).filter(edit=>edit.name?.trim()).map(edit=>[edit.roadId,edit.name!.trim()])),[live.state.roads]);
 const districtNames=useMemo(()=>Object.fromEntries(Object.values(live.state.districts).filter(edit=>edit.name?.trim()).map(edit=>[edit.districtId,edit.name.trim()])),[live.state.districts]);
 const pavedRoads=useMemo(()=>Object.values(live.state.roads).filter(edit=>isLanes(edit.asphalt)).map(edit=>{const road=baseRoads.find(item=>item.id===edit.roadId);return {id:edit.roadId,asphalt:edit.asphalt as number,oneway:isOneway(road?.tags),coordinates:road?.coordinates??[]}}).filter(road=>road.coordinates.length>1),[live.state.roads,baseRoads]);

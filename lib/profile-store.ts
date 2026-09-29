@@ -33,6 +33,7 @@ export const PROFILE_KEYS = {
   prefs: 'atlas-prefs',
   voice: 'atlas-voice',
   mode: 'atlas-mode',
+  buildingDetail: 'atlas-building-detail',
 } as const;
 export const DEFAULT_PREFS: Readonly<Prefs> = Object.freeze({ homeCity: null, openInHomeCity: false, start3d: false });
 const MAX_PLACES = 12, MAX_ROUTES = 8, MAX_TEXT = 200;
@@ -113,6 +114,14 @@ export function readVoice(): boolean {
 }
 export function writeVoice(on: boolean) {
   writeRaw(PROFILE_KEYS.voice, on ? 'on' : 'off');
+}
+
+/** Close-up building detail (windows, roofs, street trees); on unless the reader turned it off. */
+export function readBuildingDetail(): boolean {
+  return readRaw(PROFILE_KEYS.buildingDetail) !== 'off';
+}
+export function writeBuildingDetail(on: boolean) {
+  writeRaw(PROFILE_KEYS.buildingDetail, on ? 'on' : 'off');
 }
 
 /** The travel mode new routes start with; a car unless the reader chose another. */

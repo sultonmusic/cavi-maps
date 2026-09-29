@@ -5,7 +5,7 @@
 // Only native <select> and switch buttons are used inside the Sheet: the shadcn Select popup opens
 // at z-index 50, behind the Sheet at 1000.
 import {useEffect,useId,useRef,useState,type ReactNode} from 'react';
-import {Bike,Bookmark,Briefcase,Bus,Car,CarTaxiFront,Clock,Download,Footprints,HardDrive,House,Info,LocateFixed,MapPin,MapPinned,Rotate3d,Route,Scooter,Share2,ShieldCheck,Signpost,Smartphone,Trash2,Volume2,X,type LucideIcon} from 'lucide-react';
+import {Bike,Bookmark,Briefcase,Building2,Bus,Car,CarTaxiFront,Clock,Download,Footprints,HardDrive,House,Info,LocateFixed,MapPin,MapPinned,Rotate3d,Route,Scooter,Share2,ShieldCheck,Signpost,Smartphone,Trash2,Volume2,X,type LucideIcon} from 'lucide-react';
 import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from '@/components/ui/sheet';
 import CaviMark from '@/components/cavi-mark';
 import {APP_NAME,APP_BYLINE,APP_VERSION} from '@/lib/brand.mjs';
@@ -13,7 +13,7 @@ import {CITIES,REGIONS,cityAt,cityByName} from '@/lib/cities.mjs';
 import {kindLabel,PLACE_KIND_LABELS} from '@/lib/place-kinds.mjs';
 import {plural,distanceLabel,type SearchPlace} from '@/lib/place-search';
 import {MODES,MODE_LABELS,type Mode} from '@/lib/travel.mjs';
-import {readPrefs,writePrefs,readVoice,writeVoice,readMode,writeMode,recentPlaces,recentRoutes,clearHistory,homePlace,setHomePlace,onProfileChange,type HomeSlot,type Prefs,type RecentPlace,type RecentRoute,type StoredPlace} from '@/lib/profile-store';
+import {readPrefs,writePrefs,readVoice,writeVoice,readBuildingDetail,writeBuildingDetail,readMode,writeMode,recentPlaces,recentRoutes,clearHistory,homePlace,setHomePlace,onProfileChange,type HomeSlot,type Prefs,type RecentPlace,type RecentRoute,type StoredPlace} from '@/lib/profile-store';
 import {offlineSupported,offlineStatus,planArea,planGraph,saveUrls,clearSavedMaps,savedAreas,rememberArea,forgetAreas,buildInfo,type OfflineStatus,type SavedArea} from '@/lib/offline-maps';
 import {cityArea,viewArea,formatBytes,type OfflineArea} from '@/lib/offline-areas.mjs';
 import {siteUrl,SITE_ROOT} from '@/lib/site-url';
@@ -40,9 +40,9 @@ const MODE_ICONS:Record<Mode,LucideIcon>={foot:Footprints,bike:Bike,scooter:Scoo
 const ASK_ABOVE=30*1024*1024;
 const COUNTRY_REGIONS=REGIONS.filter(region=>region!=='Вся страна');
 
-type Snapshot={prefs:Prefs;voice:boolean;mode:Mode;home:StoredPlace|null;work:StoredPlace|null;places:RecentPlace[];routes:RecentRoute[];areas:SavedArea[]};
+type Snapshot={prefs:Prefs;voice:boolean;detail:boolean;mode:Mode;home:StoredPlace|null;work:StoredPlace|null;places:RecentPlace[];routes:RecentRoute[];areas:SavedArea[]};
 function readAll():Snapshot{
- return {prefs:readPrefs(),voice:readVoice(),mode:readMode(),home:homePlace('home'),work:homePlace('work'),places:recentPlaces(),routes:recentRoutes(),areas:savedAreas()};
+ return {prefs:readPrefs(),voice:readVoice(),detail:readBuildingDetail(),mode:readMode(),home:homePlace('home'),work:homePlace('work'),places:recentPlaces(),routes:recentRoutes(),areas:savedAreas()};
 }
 /** Everything the page shows from the device, re-read on every change and whenever the page opens. */
 function useProfile(open:boolean){
@@ -342,6 +342,7 @@ export default function ProfilePage({open,onClose,saved,placeById,onOpenPlace,on
     </label>
     <SwitchRow Icon={MapPin} title="Открывать карту в моём городе" hint={homeCity?'Иначе карта открывается там, где вы её оставили':'Сначала выберите свой город'} on={!!homeCity&&snap.prefs.openInHomeCity} disabled={!homeCity} onToggle={on=>writePrefs({openInHomeCity:on})}/>
     <SwitchRow Icon={Rotate3d} title="Объёмный вид при запуске" hint="Дома в 3D сразу после открытия карты" on={snap.prefs.start3d} onToggle={on=>writePrefs({start3d:on})}/>
+    <SwitchRow Icon={Building2} title="Подробные здания" hint="Окна, крыши и деревья вблизи. Отключите на слабом телефоне" on={snap.detail} onToggle={writeBuildingDetail}/>
     <SwitchRow Icon={Volume2} title="Голосовые подсказки" hint="Навигатор проговаривает повороты" on={snap.voice} onToggle={writeVoice}/>
     <p className="profile-label" id="profile-mode-label">Способ передвижения по умолчанию</p>
     <div className="profile-modes" role="group" aria-labelledby="profile-mode-label">

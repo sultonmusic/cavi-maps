@@ -13,6 +13,10 @@ import { siteUrl } from './site-url'
 import { Map as GLMap, Marker, LngLatBounds, MercatorCoordinate, ScaleControl, addProtocol, type CustomLayerInterface, type GeoJSONSource, type MapMouseEvent, type RequestParameters, type StyleSpecification } from 'maplibre-gl'
 import { encodeTile, type MvtFeature, type MvtLayer } from './mvt'
 import { houseGroupOf, housesInTile, indexHouses, type HouseIndex } from './country-houses.mjs'
+import { bindSolid, composeMatrix, solidProgram, unbindSolid, type SolidProgram } from './gl-kit'
+import { LEAVES, SUN, block, blob, facet, rectangleAround, unit, type Rectangle, type Vec3 } from './mesh-kit.mjs'
+import { houseTone, liftedHeight, outlineTone } from './facades.mjs'
+import { BUILDING_COLOUR, BUILDING_LIGHT, detailLayer } from './detail-layer'
 import { ASPHALT_STOPS, carriagewayMetres, laneAt, laneLines, lanePieces, laneSegments, offsetLine, ribbon, streetAt, streetCrossings, zebra, type LaneSpot } from './lanes.mjs'
 import { keepRight, type Mode } from './travel.mjs'
 import { POI_COLOURS, POI_IMAGE_PREFIX, POI_MINZOOM, POI_RANK_FILTER, poiIconSizeExpression, poiLabelOffset } from './poi-icons.mjs'
@@ -91,7 +95,7 @@ function heightStated(info?: HeightInfo | null) {
    the map, so the layers reach down to those tiles and the fade follows the map zoom;
    otherwise houses arrive a whole tile at a time as the distance comes closer. */
 const HOUSE_MINZOOM = 13
-const HOUSE_OPACITY = ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 0.92]
+const HOUSE_OPACITY = ['interpolate', ['linear'], ['zoom'], 14, 0, 15, 1]
 const PAVING = 'atlas-paving'
 
 const EMPTY = { type: 'FeatureCollection' as const, features: [] }
@@ -275,9 +279,14 @@ function registerProtocol() {
       const name = `${group[0]}-${group[1]}`
       if (!(await loadHouseList()).has(name)) return { data: new Uint8Array(0) }
       const houses = housesInTile(await houseFile(name), group[0], group[1], z, x, y)
-      // Each house keeps its record number as its key, so a tap can name it; `stated` marks a height a source gives.
-      const features: MvtFeature[] = houses.map(house => ({ type: 3, rings: [house.ring], properties: {
-        height: house.height || APPROXIMATE_HEIGHT, key: countryKey(name, house.index), ...(house.height && !house.estimated ? { stated: 1 } : {}) } }))
+      const features: MvtFeature[] = houses.map(house => {
+        // Tone and height exactly as lib/detail-layer.ts dresses the same house. Each house keeps its record
+        // number as its key, so a tap can name it; `stated` marks a height a source gives, never an estimate.
+        const tone = outlineTone(house.outline)
+        const properties: Record<string, number | string> = { height: liftedHeight(house.height || APPROXIMATE_HEIGHT, tone), tone, key: countryKey(name, house.index) }
+        if (house.height && !house.estimated) properties.stated = 1
+        return { type: 3 as const, rings: [house.ring], properties }
+      })
       return { data: encodeTile([{ name: 'houses', features }]) }
     } catch {
       return { data: new Uint8Array(0) }
@@ -286,57 +295,6 @@ function registerProtocol() {
 }
 
 const LABEL_RANK: Record<string, number> = { country: 0, city: 1, town: 2, village: 3, hamlet: 4, neighbourhood: 5, district: 5, place: 6, road: 7, house: 8 }
-
-type Vec3 = [number, number, number]
-const unit = ([x, y, z]: Vec3): Vec3 => { const length = Math.hypot(x, y, z) || 1; return [x / length, y / length, z / length] }
-
-type GL = WebGLRenderingContext | WebGL2RenderingContext
-type SolidProgram = { program: WebGLProgram; matrix: WebGLUniformLocation | null; point: number; colour: number }
-
-/** The one program behind the hand-drawn 3D layers: triangles of x, y, z and premultiplied r, g, b, a. */
-function solidProgram(gl: GL): SolidProgram | null {
-  const program = gl.createProgram()
-  if (!program) return null
-  for (const [kind, source] of [
-    [gl.VERTEX_SHADER, 'uniform mat4 u_matrix;attribute vec3 a_point;attribute vec4 a_colour;varying vec4 v_colour;void main(){gl_Position=u_matrix*vec4(a_point,1.0);v_colour=a_colour;}'],
-    [gl.FRAGMENT_SHADER, 'precision mediump float;varying vec4 v_colour;void main(){gl_FragColor=v_colour;}'],
-  ] as const) {
-    const shader = gl.createShader(kind)
-    if (!shader) return null
-    gl.shaderSource(shader, source)
-    gl.compileShader(shader)
-    gl.attachShader(program, shader)
-  }
-  gl.linkProgram(program)
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return null
-  return { program, matrix: gl.getUniformLocation(program, 'u_matrix'), point: gl.getAttribLocation(program, 'a_point'), colour: gl.getAttribLocation(program, 'a_colour') }
-}
-
-/** Composed in 64-bit before the upload, or building-sized objects twitch at street zooms. */
-function composeMatrix(view: ArrayLike<number>, model: number[]) {
-  const matrix = new Float32Array(16)
-  for (let column = 0; column < 4; column++) for (let row = 0; row < 4; row++) {
-    let sum = 0
-    for (let k = 0; k < 4; k++) sum += view[row + k * 4] * model[k + column * 4]
-    matrix[row + column * 4] = sum
-  }
-  return matrix
-}
-
-function bindSolid(gl: GL, solid: SolidProgram, buffer: WebGLBuffer | null, matrix: Float32Array) {
-  gl.useProgram(solid.program)
-  gl.uniformMatrix4fv(solid.matrix, false, matrix)
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-  gl.enableVertexAttribArray(solid.point)
-  gl.enableVertexAttribArray(solid.colour)
-  gl.vertexAttribPointer(solid.point, 3, gl.FLOAT, false, 28, 0)
-  gl.vertexAttribPointer(solid.colour, 4, gl.FLOAT, false, 28, 12)
-}
-
-function unbindSolid(gl: GL, solid: SolidProgram) {
-  gl.disableVertexAttribArray(solid.point)
-  gl.disableVertexAttribArray(solid.colour)
-}
 
 /* My position: a solid chevron standing in the map's own 3D space. A flat marker all
    but vanishes into the road under a steep driving camera; the ridge and walls of this
@@ -442,7 +400,6 @@ function locationArrow(map: GLMap) {
    top of them. It is fitted to the footprint's tightest rectangle, which is only honest when
    the footprint nearly fills that rectangle; any other shape keeps its flat top. */
 type Roof = { ring: number[][]; shape: RoofShape; base: number; key?: string }
-type Rectangle = { centre: [number, number]; along: [number, number]; half: [number, number]; fill: number }
 const ROOF_FILL = 0.8
 const ROOF_PITCH = Math.tan(30 * Math.PI / 180)
 const ROOF_COLOUR: Vec3 = [0.6, 0.55, 0.5]
@@ -455,48 +412,6 @@ function localMetres(ring: number[][], origin: MercatorCoordinate): [number, num
     const point = MercatorCoordinate.fromLngLat([lon, lat])
     return [(point.x - origin.x) / scale, (origin.y - point.y) / scale]
   })
-}
-
-/** The smallest rectangle around a ring of local metres, and how much of it the ring fills. */
-function rectangleAround(ring: [number, number][]): Rectangle | null {
-  const last = ring.length - 1
-  const points = last > 0 && ring[0][0] === ring[last][0] && ring[0][1] === ring[last][1] ? ring.slice(0, last) : ring
-  if (points.length < 3) return null
-  // Convex hull by monotone chain: the tightest rectangle has a side along one of its edges.
-  const sorted = [...points].sort((p, q) => p[0] - q[0] || p[1] - q[1])
-  const turn = (o: number[], a: number[], b: number[]) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
-  const chain = (list: [number, number][]) => {
-    const kept: [number, number][] = []
-    for (const point of list) {
-      while (kept.length >= 2 && turn(kept[kept.length - 2], kept[kept.length - 1], point) <= 0) kept.pop()
-      kept.push(point)
-    }
-    return kept.slice(0, -1)
-  }
-  const hull = [...chain(sorted), ...chain([...sorted].reverse())]
-  if (hull.length < 3) return null
-  let best: Rectangle | null = null, bestArea = Infinity
-  for (let i = 0; i < hull.length; i++) {
-    const [ax, ay] = hull[i], [bx, by] = hull[(i + 1) % hull.length], length = Math.hypot(bx - ax, by - ay)
-    if (!length) continue
-    const ux = (bx - ax) / length, uy = (by - ay) / length
-    let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity
-    for (const [x, y] of hull) {
-      const u = x * ux + y * uy, v = y * ux - x * uy
-      minU = Math.min(minU, u); maxU = Math.max(maxU, u); minV = Math.min(minV, v); maxV = Math.max(maxV, v)
-    }
-    const area = (maxU - minU) * (maxV - minV)
-    if (area >= bestArea) continue
-    bestArea = area
-    const cu = (minU + maxU) / 2, cv = (minV + maxV) / 2, hu = (maxU - minU) / 2, hv = (maxV - minV) / 2
-    const centre: [number, number] = [cu * ux - cv * uy, cu * uy + cv * ux]
-    // The long side leads, so a ridge runs along the building rather than across it.
-    best = hu >= hv ? { centre, along: [ux, uy], half: [hu, hv], fill: 0 } : { centre, along: [-uy, ux], half: [hv, hu], fill: 0 }
-  }
-  if (!best || !(bestArea > 0)) return null
-  let area = 0
-  for (let i = 0, j = points.length - 1; i < points.length; j = i++) area += (points[j][0] + points[i][0]) * (points[j][1] - points[i][1])
-  return { ...best, fill: Math.abs(area / 2) / bestArea }
 }
 
 /** Whether a footprint is near enough to a rectangle to carry a pitched roof. */
@@ -548,7 +463,6 @@ function roofTriangles(box: Rectangle, shape: RoofShape, base: number, out: numb
 /* A flagpole flying Tajikistan's flag: red, white and green bands in 2:3:2 with the golden
    crown in the middle. The cloth holds a still ripple, so it reads as cloth without the map
    having to repaint every frame. */
-const SUN = unit([-0.35, -0.5, 0.8])
 const RED: Vec3 = [0.8, 0.07, 0.07], WHITE: Vec3 = [0.97, 0.97, 0.95], GREEN: Vec3 = [0.02, 0.45, 0.18]
 const FLAG_BANDS: Vec3[] = [RED, RED, WHITE, WHITE, WHITE, GREEN, GREEN]
 const GOLD: Vec3 = [0.96, 0.76, 0.18], STEEL: Vec3 = [0.83, 0.85, 0.88], STONE: Vec3 = [0.72, 0.69, 0.64]
@@ -556,47 +470,9 @@ const GOLD: Vec3 = [0.96, 0.76, 0.18], STEEL: Vec3 = [0.83, 0.85, 0.88], STONE: 
 const DARK_METAL: Vec3 = [0.36, 0.38, 0.4], LAMP_GREY: Vec3 = [0.72, 0.74, 0.76], LAMP_LIGHT: Vec3 = [1, 0.96, 0.78]
 const WOOD: Vec3 = [0.84, 0.66, 0.45], BARK: Vec3 = [0.45, 0.33, 0.22], BIN_GREEN: Vec3 = [0.2, 0.4, 0.3]
 const BRONZE: Vec3 = [0.55, 0.5, 0.44], SPRAY: Vec3 = [0.86, 0.94, 0.99]
-const LEAVES: Vec3[] = [[0.42, 0.66, 0.3], [0.5, 0.7, 0.28], [0.36, 0.6, 0.32]]
 /** A point-like object to build as a mesh, with the sizes the admin gave it. */
 type Detail = { kind: DetailShape['kind']; point: number[]; width?: number; height?: number; length?: number; thickness?: number; rotation?: number }
 type Fountain = { centre: number[]; corners: number[][] }
-
-/** One flat face shaded by the sun, turned to look away from `inside`. */
-function facet(points: Vec3[], inside: Vec3, colour: Vec3, out: number[]) {
-  const [p, q, r] = points
-  const u = [q[0] - p[0], q[1] - p[1], q[2] - p[2]], v = [r[0] - p[0], r[1] - p[1], r[2] - p[2]]
-  let normal = unit([u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]])
-  if (normal[0] * (p[0] - inside[0]) + normal[1] * (p[1] - inside[1]) + normal[2] * (p[2] - inside[2]) < 0) normal = [-normal[0], -normal[1], -normal[2]]
-  const shade = 0.5 + 0.55 * Math.max(0, normal[0] * SUN[0] + normal[1] * SUN[1] + normal[2] * SUN[2])
-  const lit = colour.map(channel => Math.min(1, channel * shade))
-  for (let i = 1; i + 1 < points.length; i++) for (const point of [points[0], points[i], points[i + 1]]) out.push(...point, lit[0], lit[1], lit[2], 1)
-}
-
-/** A box `halfX` wide and `halfY` deep either side of (x, y), from `bottom` to `top`, turned
-    `angle` radians clockwise from north: its local y is the way it faces. */
-function block(x: number, y: number, halfX: number, halfY: number, bottom: number, top: number, angle: number, colour: Vec3, out: number[]) {
-  const cos = Math.cos(angle), sin = Math.sin(angle)
-  const corner = (dx: number, dy: number): Vec3 => [x + dx * cos + dy * sin, y - dx * sin + dy * cos, bottom]
-  const low = [corner(-halfX, -halfY), corner(halfX, -halfY), corner(halfX, halfY), corner(-halfX, halfY)]
-  const high = low.map(([cx, cy]): Vec3 => [cx, cy, top])
-  const inside: Vec3 = [x, y, (bottom + top) / 2]
-  for (let i = 0; i < 4; i++) facet([low[i], low[(i + 1) % 4], high[(i + 1) % 4], high[i]], inside, colour, out)
-  facet(high, inside, colour, out)
-}
-
-/** A faceted ellipsoid, the crown of a tree. */
-function blob(x: number, y: number, z: number, radius: number, tall: number, colour: Vec3, out: number[]) {
-  const rings = 5, segments = 8, centre: Vec3 = [x, y, z]
-  const at = (ring: number, segment: number): Vec3 => {
-    const polar = ring / rings * Math.PI, azimuth = (segment + (ring % 2) / 2) / segments * Math.PI * 2
-    return [x + Math.sin(polar) * Math.cos(azimuth) * radius, y + Math.sin(polar) * Math.sin(azimuth) * radius, z + Math.cos(polar) * tall]
-  }
-  for (let ring = 0; ring < rings; ring++) for (let segment = 0; segment < segments; segment++) {
-    const a = at(ring, segment), b = at(ring, segment + 1), c = at(ring + 1, segment + 1), d = at(ring + 1, segment)
-    facet([a, b, c], centre, colour, out)
-    facet([a, c, d], centre, colour, out)
-  }
-}
 
 /** A park lamp: a slim post, an arm leaning out the way `rotation` points, and a lantern. */
 function lampTriangles(x: number, y: number, detail: Detail, out: number[]) {
@@ -913,6 +789,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
 
   const style: StyleSpecification = {
     version: 8,
+    light: BUILDING_LIGHT,
     sources: {
       // The map zooms out to 6 and a tilted view reaches lower still towards the horizon, so tiles
       // below the coarsest stored tier (7) are gathered from it rather than left empty.
@@ -924,8 +801,8 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       // Zoom 16 is already finer than a footprint's outline; deeper tiles would only
       // mean more of them to cut while driving.
       country: { type: 'vector', tiles: ['houses://{z}/{x}/{y}'], minzoom: 13, maxzoom: 16 },
-      houses: { type: 'geojson', data: EMPTY, maxzoom: 16 },
-      admin: { type: 'geojson', data: EMPTY, maxzoom: 16 },
+      houses: { type: 'geojson', data: EMPTY, maxzoom: 16, tolerance: 0.05 },
+      admin: { type: 'geojson', data: EMPTY, maxzoom: 16, tolerance: 0.05 },
       city: { type: 'geojson', data: EMPTY, maxzoom: 16 },
       selection: { type: 'geojson', data: EMPTY },
       routes: { type: 'geojson', data: EMPTY },
@@ -1046,15 +923,15 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
         // Houses of the rest of the country, shown once the map is close enough for them to fade in.
         id: 'country-3d', type: 'fill-extrusion', source: 'country', 'source-layer': 'houses', minzoom: HOUSE_MINZOOM,
         layout: { visibility: 'none' },
-        paint: { 'fill-extrusion-color': '#ded3c4', 'fill-extrusion-height': ['get', 'height'] as never, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': HOUSE_OPACITY as never },
+        paint: { 'fill-extrusion-color': BUILDING_COLOUR as never, 'fill-extrusion-vertical-gradient': false, 'fill-extrusion-height': ['get', 'height'] as never, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': HOUSE_OPACITY as never },
       },
       {
         id: 'houses-3d', type: 'fill-extrusion', source: 'houses', minzoom: HOUSE_MINZOOM,
-        paint: { 'fill-extrusion-color': '#ded3c4', 'fill-extrusion-height': ['get', 'height'] as never, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': HOUSE_OPACITY as never },
+        paint: { 'fill-extrusion-color': BUILDING_COLOUR as never, 'fill-extrusion-vertical-gradient': false, 'fill-extrusion-height': ['get', 'height'] as never, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': HOUSE_OPACITY as never },
       },
       {
         id: 'admin-3d', type: 'fill-extrusion', source: 'admin', minzoom: HOUSE_MINZOOM,
-        paint: { 'fill-extrusion-color': '#e2d6c5', 'fill-extrusion-height': ['get', 'height'] as never, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': HOUSE_OPACITY as never },
+        paint: { 'fill-extrusion-color': BUILDING_COLOUR as never, 'fill-extrusion-vertical-gradient': false, 'fill-extrusion-height': ['get', 'height'] as never, 'fill-extrusion-base': 0, 'fill-extrusion-opacity': HOUSE_OPACITY as never },
       },
       { id: 'selection-fill', type: 'fill', source: 'selection', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#3798db', 'fill-opacity': 0.1 } },
       {
@@ -1162,12 +1039,35 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
   const ready = loadTileIndex()
   const meshes = meshLayer(map)
   const arrow = locationArrow(map)
+  // Close-up facades, grey roofs, parapets, rooftop boxes and street trees (lib/detail-layer.ts).
+  let houseFeatures: HouseFeature[] = [], adminDrawn: AdminBuilding[] = []
+  const detail = detailLayer(map, {
+    houseList: loadHouseList, houseFile, approximateHeight: APPROXIMATE_HEIGHT,
+    local: () => [
+      ...houseFeatures.map(feature => ({
+        id: feature.properties.key, ring: feature.geometry.coordinates[0], height: feature.properties.height,
+        roof: heightInfo[feature.properties.key]?.roof ?? null,
+      })),
+      ...adminDrawn.map(building => ({
+        id: `admin:${building.id}`, ring: building.geometry.coordinates[0], height: wallHeight(building),
+        roof: building.roof ?? null, holes: building.geometry.coordinates.length > 1,
+      })),
+    ],
+    roads: () => {
+      const edited = new Set(adminRoads.map(road => road.id))
+      return adminRoads.concat([...osmRoads.values()].filter(road => !edited.has(road.id)))
+    },
+    trees: () => osmThings.filter(thing => thing.kind === 'tree').map(thing => thing.point),
+  })
 
   // Sources only exist once the style is parsed, and the style can settle late.
   // Hold the newest payload per source and keep trying until it is accepted.
   const waiting = new Map<string, unknown>()
   const filters = new Map<string, unknown>()
   function flush() {
+    if (!map.getLayer(detail.layer.id)) {
+      try { map.addLayer(detail.layer, map.getLayer('selection-fill') ? 'selection-fill' : undefined) } catch { /* the style is still being parsed */ }
+    }
     // Roofs and flagpoles first, so the arrow stays the last thing drawn.
     for (const custom of [meshes.layer, arrow.layer]) {
       if (map.getLayer(custom.id)) continue
@@ -1353,6 +1253,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
     laneIndex = laneSegments(roads)
     showCrossings()
     if (lastRoutes) setRoutes(lastRoutes)
+    detail.invalidate()
   }
 
   /** The files of a zoom-10 folder around the middle of the map that are not fetched yet, fetched. */
@@ -1399,6 +1300,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
     stopLabels = osmThings.filter(thing => thing.kind === 'stop' && thing.name)
       .map(thing => ({ lon: thing.point[0], lat: thing.point[1], name: thing.name, kind: 'place', minzoom: 16, maxzoom: null, offset: -22 }))
     showMeshes()
+    detail.invalidate()
   }
   /* Walkways from OpenStreetMap: strips to scale along footways, paths and tracks, and footway areas.
      Crossings, as ways over a street or points on one, become zebras on the asphalt. */
@@ -1530,7 +1432,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
   }
   type HouseFeature = {
     type: 'Feature'; geometry: { type: 'Polygon'; coordinates: number[][][] }
-    properties: { key: string; height: number; house: number; street: string; label: string }
+    properties: { key: string; height: number; house: number; street: string; label: string; tone: number }
   }
 
   /** Microsoft footprints and Shaydon's OSM buildings share one 3D layer. Each carries
@@ -1541,7 +1443,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       return {
         type: 'Feature', geometry: { type: 'Polygon', coordinates: [shape.ring] },
         properties: {
-          key, height: wallHeight(heightInfo[key]), label: '',
+          key, height: wallHeight(heightInfo[key]), label: '', tone: houseTone(key),
           house: houseData?.number?.[shape.index] ?? 0,
           street: streetIndex >= 0 ? houseData?.streets?.[streetIndex] ?? '' : '',
         },
@@ -1551,10 +1453,11 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       const key = `osm:${building.id}`
       features.push({
         type: 'Feature', geometry: { type: 'Polygon', coordinates: [building.ring] },
-        properties: { key, height: wallHeight(heightInfo[key] ?? building), house: 0, street: '', label: building.name ?? '' },
+        properties: { key, height: wallHeight(heightInfo[key] ?? building), house: 0, street: '', label: building.name ?? '', tone: houseTone(key) },
       })
     }
     push('houses', { type: 'FeatureCollection', features })
+    houseFeatures = features
     const osmByKey = new Map(osmHouses.map(building => [`osm:${building.id}`, building]))
     houseByKey = new Map(features.map(({ geometry, properties }): [string, BuildingRecord] => {
       // The same source wallHeight() drew the walls from: the admin's floors, else OpenStreetMap's.
@@ -1571,6 +1474,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       return roof ? [{ key: feature.properties.key, ring: feature.geometry.coordinates[0], shape: roof, base: feature.properties.height }] : []
     })
     showMeshes()
+    detail.invalidate()
   }
 
   function setBuildings(data: BuildingData | null) {
@@ -1652,7 +1556,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       type: 'FeatureCollection',
       features: drawn.map(building => ({
         type: 'Feature' as const,
-        properties: { height: wallHeight(building), id: building.id, key: `admin:${building.id}`, label: building.name ?? '' },
+        properties: { height: wallHeight(building), id: building.id, key: `admin:${building.id}`, label: building.name ?? '', tone: houseTone(`admin:${building.id}`) },
         geometry: { type: 'Polygon' as const, coordinates: building.geometry.coordinates },
       })),
     })
@@ -1666,12 +1570,15 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
     adminRoofs = drawn.flatMap(building => building.roof
       ? [{ key: `admin:${building.id}`, ring: building.geometry.coordinates[0], shape: building.roof, base: wallHeight(building) }] : [])
     showMeshes()
+    adminDrawn = drawn
+    detail.invalidate()
   }
 
   function setLabels(next: AtlasLabel[]) { labels = next; map.triggerRepaint() }
 
   let lastPoints: MapPoint[] = [], focusId: string | null = null
   function setPoints(points: MapPoint[]) {
+    detail.addPlaces(points)
     lastPoints = points
     // The focused place (under the destination pin) goes first, for its disc's room and its name.
     const rankOf = (point: MapPoint) => point.id === focusId ? -1 : point.rank ?? 3
@@ -1832,6 +1739,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
     liftOffset: (lon: number, lat: number, metres: number) => liftOffset(map, lon, lat, metres),
     setLabels, setPoints, setPointFocus, setSelection, setRoutes, setLiveRoads, setBuildings, setOsmBuildings, setBuildingInfo, setAdminBuildings, setCityObjects,
     setEditorShapes, vertex, setLocationArrow, setTravelMode,
+    setBuildingDetail: detail.setEnabled, buildingDetailStats: detail.stats,
   }
 }
 
