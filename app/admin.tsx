@@ -292,6 +292,14 @@ export default function Admin() {
     if(pickMode==='building'||pickMode==='city'){setVertices(previous=>[...previous,[lon,lat]]);return}
     if(pickMode==='centre'){buildArea([lon,lat],areaShape,areaSize);setPickMode('select');setNotice('Центр выбран. Размеры можно менять — фигура перестроится.');return}
     if(pickMode==='point'&&cityObject&&isPointObject(cityObject)){setCityObject({...cityObject,geometry:{type:'Point',coordinates:[lon,lat]}});setPickMode('select');setNotice('Место выбрано. Проверьте размеры и сохраните.');return}
+    // In a tilted view the finger lands on a building's walls or roof, not on its outline on the ground,
+    // so on the buildings tab the building is found along the line of sight before any outline drawn on the ground.
+    if(tab==='buildings'){
+      const seen=gl.houseAt(event.point);
+      if(seen?.source==='admin'){const value=live.state.buildings.find(item=>`admin:${item.id}`===seen.key);if(value){selectBuilding(value,false);return}}
+      if(seen?.source==='houses'){selectFootprint(seen.key,false);return}
+      if(seen){setNotice(seen.source==='landmark'?'Это здание смоделировано отдельно и здесь не редактируется.':'Этажность пока можно указать только для зданий Шайдона.');return}
+    }
     // An object drawn by the editor wins over whatever lies under it.
     const layers=['editor-point','editor-line','editor-fill'].filter(id=>gl.map.getLayer(id));
     // A few pixels of slack, so a thin walkway line can be picked with a finger.
@@ -304,11 +312,7 @@ export default function Admin() {
       if(role==='building'){const value=live.state.buildings.find(item=>item.id===id);if(value){selectBuilding(value,false);return}}
       if(role==='city'){const value=live.state.cityObjects.find(item=>item.id===id);if(value){selectCityObject(value,false);return}}
     }
-    if(tab==='buildings'){
-      const house=gl.houseAt(event.point);
-      if(house?.key){selectFootprint(house.key,false);return}
-      setNotice('Нажмите на здание, чтобы указать этажность, или нарисуйте новое кнопкой «+».');return;
-    }
+    if(tab==='buildings'){setNotice('Нажмите на здание, чтобы указать этажность, или нарисуйте новое кнопкой «+».');return}
     if(tab==='city'){setNotice('Выберите объект на карте или добавьте новый кнопками в списке.');return}
     if(tab==='roads') {
       const radius=Math.max(10,Math.min(65,156543.03*Math.cos(lat*Math.PI/180)/2**gl.map.getZoom()*18));

@@ -11,13 +11,16 @@ import {createAtlasGL, composeLabels, baseLabels, type AtlasGL, type AtlasLabel,
 import {isLanes,isOneway} from '@/lib/lanes.mjs';
 import {poiNearby,poiStyle} from '@/lib/poi-icons.mjs';
 import {poiPinSvg} from '@/lib/poi-draw';
+import {floorsLabel,floorsOf} from '@/lib/building-ray.mjs';
+import {isShaydonKey} from '@/lib/building-pick';
+import {cityAt} from '@/lib/cities.mjs';
 import type {Marker} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import BusinessDetails,{businessPlace} from '@/components/business-details';
 import {Sheet,SheetContent,SheetHeader,SheetTitle,SheetDescription} from '@/components/ui/sheet';
 type Place={id:string;lat:number;lon:number;tags:Record<string,string>};
 type LabelHit={name:string;kind:string;owner?:string;lat:number;lon:number};
-type HouseHit={number:number;street:string;label:string;lat:number;lon:number};
+type HouseHit={number:number;street:string;label:string;lat:number;lon:number;key?:string;levels?:number;height?:number;stated?:boolean};
 /** "улица 87 дом 77", "ул 87, 77" and "87 77" all have to reach the same house. */
 const NOISE=/^(дом|д|улица|ул|кӯча|куча|k|№|no)$/;
 function terms(value:string){
@@ -26,9 +29,13 @@ function terms(value:string){
 }
 function housePlace(hit:HouseHit):Place{
  const title=hit.label||(hit.number?(hit.street?`${hit.street}, дом ${hit.number}`:`Дом ${hit.number}`):'Здание');
+ const city=!hit.key||isShaydonKey(hit.key)?'Шайдон':cityAt(hit.lat,hit.lon)?.name;
+ const approx=!hit.levels&&hit.stated&&hit.height?floorsOf(hit.height):0;
  return {id:`house:${hit.lat.toFixed(6)},${hit.lon.toFixed(6)}`,lat:hit.lat,lon:hit.lon,
-  tags:{name:title,'name:ru':title,'atlas:type':'house','addr:city':'Шайдон',
-   ...(hit.street?{'atlas:street':hit.street}:{}),...(hit.number?{'atlas:house':String(hit.number)}:{})}};
+  tags:{name:title,'name:ru':title,'atlas:type':'house',...(city?{'addr:city':city}:{}),
+   ...(hit.street?{'atlas:street':hit.street}:{}),...(hit.number?{'atlas:house':String(hit.number)}:{}),
+   ...(hit.key?{'atlas:building':hit.key}:{}),...(hit.levels?{'building:levels':String(hit.levels)}:{}),
+   ...(approx?{'atlas:levels-approx':String(approx)}:{}),...(hit.stated&&hit.height?{'atlas:height':String(Math.round(hit.height))}:{})}};
 }
 type Tab='search'|'route'|'nav'|'profile';
 type Sheet='peek'|'half'|'full';
@@ -40,7 +47,7 @@ function category(p:Place){let t=p.tags;if(t['atlas:category'])return cats.some(
 const BUSINESS_KINDS:Record<string,string>={food:'Еда',shop:'Магазин',hotel:'Отель',health:'Здоровье',fuel:'АЗС',tourism:'Достопримечательность',service:'Услуги',other:'Организация'};
 function placeKind(p:Place){
  const type=p.tags['atlas:type'];
- if(type==='house')return p.tags['atlas:house']?'Дом':'Здание';
+ if(type==='house'){const kind=p.tags['atlas:house']?'Дом':'Здание',exact=Number(p.tags['building:levels'])||0,n=exact||Number(p.tags['atlas:levels-approx'])||0;return n?`${kind} · ${exact?'':'≈ '}${floorsLabel(n)}`:kind}
  if(type==='label')return placeKinds[p.tags['atlas:place']]||'Место';
  if(type==='street')return 'Улица';
  if(type==='district')return 'Микрорайон';
@@ -123,8 +130,12 @@ useEffect(()=>{destinationMarker.current?.remove();destinationMarker.current=nul
  const instance=atlas.current;if(!ready||!instance||!destination)return;
  const pin=instance.marker(poiPinSvg(poiStyle(destination.id,destination.tags).icon),'route-pin-wrap');
  pin.setLngLat([destination.lon,destination.lat]).addTo(instance.map);
+ // A building's pin stands on its roof, not on the ground inside it.
+ const lift=destination.tags['atlas:type']==='house'?Number(destination.tags['atlas:height'])||0:0;
+ const follow=lift>4?()=>pin.setOffset(instance.liftOffset(destination.lon,destination.lat,lift)):null;
+ if(follow){follow();instance.map.on('move',follow)}
  pin.getElement().addEventListener('click',()=>pointHandler.current(destination));
- destinationMarker.current=pin},[destination,ready]);
+ destinationMarker.current=pin;return()=>{if(follow)instance.map.off('move',follow)}},[destination,ready]);
 useEffect(()=>{const instance=atlas.current;if(!instance)return;
  let shape:SelectionGeometry|null=null;
  if(selected?.tags['atlas:type']==='street'){const road=streetIndex.byId.get(selected.tags['atlas:road-id']);if(road)shape={type:'LineString',coordinates:road.coordinates}}
@@ -208,10 +219,11 @@ useEffect(()=>{window.addEventListener('pointermove',gripMove);window.addEventLi
 // A place with no address tags still stands on a street.
 function placeAddress(p:Place){
  const known=address(p);
- if(known)return known;
+ // A building off Shaydon's numbered streets still stands on a street: its town and the nearest one.
+ if(known&&(p.tags['atlas:type']!=='house'||p.tags['atlas:street']))return known;
  const hit=streetIndex.nearest(p.lat,p.lon,90);
  const street=hit?.road.name||hit?.road.ref;
- return street?[p.tags['addr:city'],street].filter(Boolean).join(', '):`${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
+ return street?[p.tags['addr:city'],street].filter(Boolean).join(', '):known||`${p.lat.toFixed(4)}, ${p.lon.toFixed(4)}`;
 }
 function open(p:Place){choosePoint(p);atlas.current?.map.easeTo({center:[p.lon,p.lat],zoom:Math.max(17,atlas.current.map.getZoom()),duration:400})}
 function save(p:Place){const own=(id:string)=>id.startsWith('point:')||id.startsWith('house:');

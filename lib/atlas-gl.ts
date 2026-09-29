@@ -17,6 +17,7 @@ import { ASPHALT_STOPS, carriagewayMetres, laneAt, laneLines, lanePieces, laneSe
 import { keepRight, type Mode } from './travel.mjs'
 import { POI_COLOURS, POI_IMAGE_PREFIX, POI_MINZOOM, POI_RANK_FILTER, poiIconSizeExpression, poiLabelOffset } from './poi-icons.mjs'
 import { addPoiImage, poiIconBoxes, poiPlacement } from './poi-draw'
+import { countryKey, liftOffset, pickBuilding, standsBefore, type BuildingCatalogue, type BuildingRecord, type BuildingSolid } from './building-pick'
 
 type Bundle = Record<string, RawFeature[]>
 type RawFeature = [string, number, number[][][], { style?: string; way?: number; offsets?: number[] }?]
@@ -79,6 +80,11 @@ export function wallHeight(info?: HeightInfo | null) {
   if (typeof height === 'number' && height >= 1 && height <= 500) return height
   if (typeof levels === 'number' && Number.isInteger(levels) && levels >= 1 && levels <= 60) return levels * FLOOR_HEIGHT + 1
   return APPROXIMATE_HEIGHT
+}
+/** Whether wallHeight() takes the height from `info` rather than falling back to the approximation. */
+function heightStated(info?: HeightInfo | null) {
+  const height = info?.height, levels = info?.levels
+  return (typeof height === 'number' && height >= 1 && height <= 500) || (typeof levels === 'number' && Number.isInteger(levels) && levels >= 1 && levels <= 60)
 }
 /* Houses stay standing from the moment they appear until they fade out: no switch
    to flat footprints. Far up a tilted view the tiles are several zooms coarser than
@@ -269,7 +275,9 @@ function registerProtocol() {
       const name = `${group[0]}-${group[1]}`
       if (!(await loadHouseList()).has(name)) return { data: new Uint8Array(0) }
       const houses = housesInTile(await houseFile(name), group[0], group[1], z, x, y)
-      const features: MvtFeature[] = houses.map(house => ({ type: 3, rings: [house.ring], properties: { height: house.height || APPROXIMATE_HEIGHT } }))
+      // Each house keeps its record number as its key, so a tap can name it; `stated` marks a height a source gives.
+      const features: MvtFeature[] = houses.map(house => ({ type: 3, rings: [house.ring], properties: {
+        height: house.height || APPROXIMATE_HEIGHT, key: countryKey(name, house.index), ...(house.height && !house.estimated ? { stated: 1 } : {}) } }))
       return { data: encodeTile([{ name: 'houses', features }]) }
     } catch {
       return { data: new Uint8Array(0) }
@@ -433,7 +441,7 @@ function locationArrow(map: GLMap) {
 /* Pitched roofs. MapLibre extrudes flat-topped walls only, so a roof is its own mesh set on
    top of them. It is fitted to the footprint's tightest rectangle, which is only honest when
    the footprint nearly fills that rectangle; any other shape keeps its flat top. */
-type Roof = { ring: number[][]; shape: RoofShape; base: number }
+type Roof = { ring: number[][]; shape: RoofShape; base: number; key?: string }
 type Rectangle = { centre: [number, number]; along: [number, number]; half: [number, number]; fill: number }
 const ROOF_FILL = 0.8
 const ROOF_PITCH = Math.tan(30 * Math.PI / 180)
@@ -1468,6 +1476,8 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
   let houseData: BuildingData | null = null, houseShapes: ReturnType<typeof decode> = []
   let osmHouses: OsmBuilding[] = [], heightInfo: Record<string, HeightInfo> = {}
   let houseRoofs: Roof[] = [], adminRoofs: Roof[] = [], details: Detail[] = [], fountains: Fountain[] = []
+  /** Every Shaydon footprint and admin building by key, with its whole outline, for the tap (building-pick.ts). */
+  let houseByKey = new Map<string, BuildingRecord>(), adminByKey = new Map<string, BuildingRecord>()
 
   /* Street furniture from OpenStreetMap, loaded file by file. Only what stands near the middle of
      the map becomes mesh, and the mesh follows the map once it has moved half a kilometre. */
@@ -1545,10 +1555,20 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       })
     }
     push('houses', { type: 'FeatureCollection', features })
+    const osmByKey = new Map(osmHouses.map(building => [`osm:${building.id}`, building]))
+    houseByKey = new Map(features.map(({ geometry, properties }): [string, BuildingRecord] => {
+      // The same source wallHeight() drew the walls from: the admin's floors, else OpenStreetMap's.
+      const info = heightInfo[properties.key] ?? osmByKey.get(properties.key)
+      return [properties.key, {
+        key: properties.key, source: 'houses', ring: geometry.coordinates[0], height: properties.height,
+        number: properties.house, street: properties.street, label: properties.label,
+        ...(heightStated({ levels: info?.levels }) ? { levels: info?.levels } : {}), stated: heightStated(info),
+      }]
+    }))
     // Only a roof the admin chose is drawn, on walls as tall as the feature says.
     houseRoofs = features.flatMap(feature => {
       const roof = heightInfo[feature.properties.key]?.roof
-      return roof ? [{ ring: feature.geometry.coordinates[0], shape: roof, base: feature.properties.height }] : []
+      return roof ? [{ key: feature.properties.key, ring: feature.geometry.coordinates[0], shape: roof, base: feature.properties.height }] : []
     })
     showMeshes()
   }
@@ -1632,12 +1652,19 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       type: 'FeatureCollection',
       features: drawn.map(building => ({
         type: 'Feature' as const,
-        properties: { height: wallHeight(building), id: building.id, label: building.name ?? '' },
+        properties: { height: wallHeight(building), id: building.id, key: `admin:${building.id}`, label: building.name ?? '' },
         geometry: { type: 'Polygon' as const, coordinates: building.geometry.coordinates },
       })),
     })
+    adminByKey = new Map(drawn.map((building): [string, BuildingRecord] => {
+      const key = `admin:${building.id}`, [ring, ...holes] = building.geometry.coordinates
+      return [key, {
+        key, source: 'admin', ring, ...(holes.length ? { holes } : {}), height: wallHeight(building), label: building.name ?? '',
+        ...(heightStated({ levels: building.levels }) ? { levels: building.levels } : {}), stated: heightStated(building),
+      }]
+    }))
     adminRoofs = drawn.flatMap(building => building.roof
-      ? [{ ring: building.geometry.coordinates[0], shape: building.roof, base: wallHeight(building) }] : [])
+      ? [{ key: `admin:${building.id}`, ring: building.geometry.coordinates[0], shape: building.roof, base: wallHeight(building) }] : [])
     showMeshes()
   }
 
@@ -1708,30 +1735,37 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
     return map.queryRenderedFeatures(pad ? box : point, { layers })
   }
 
-  /** The house under a point, from the shipped footprints or the admin's own outlines. */
-  function houseAt(point: MapMouseEvent['point']) {
-    const house = rendered(point, ['houses-3d', 'admin-3d'], 14)[0]
-    if (!house) return null
-    return {
-      key: String(house.properties?.key ?? ''),
-      number: Number(house.properties?.house ?? 0) || 0,
-      street: String(house.properties?.street ?? ''),
-      label: String(house.properties?.label ?? ''),
-      shape: house.geometry.type === 'Polygon' ? house.geometry as SelectionGeometry : null,
-    }
+  /* Buildings as a tap sees them: the extrusion layers MapLibre can query, the app's own whole outlines for
+     them (GeoJSON tiles cut outlines at tile edges), and the meshes MapLibre cannot query. */
+  const buildings: BuildingCatalogue = {
+    layers: ['admin-3d', 'houses-3d', 'country-3d'],
+    known: key => houseByKey.get(key) ?? adminByKey.get(key),
+    solids: () => {
+      const solids: BuildingSolid[] = []
+      for (const roof of houseRoofs) { const record = roof.key ? houseByKey.get(roof.key) : undefined; if (record) solids.push({ record, roof: roof.shape, base: roof.base }) }
+      for (const roof of adminRoofs) { const record = roof.key ? adminByKey.get(roof.key) : undefined; if (record) solids.push({ record, roof: roof.shape, base: roof.base }) }
+      return solids
+    },
   }
 
-  /** What the tap landed on: a marker, a name, a house, or bare ground. */
+  /** The building under a screen point as the camera sees it: front-most along the line of sight, with its
+      whole outline and its middle. The admin panel asks at any zoom the houses are drawn at. */
+  function houseAt(point: { x: number; y: number }) {
+    return pickBuilding(map, point, buildings)
+  }
+
+  /** What the tap landed on: a marker, a name, a building, or bare ground. */
   function pick(event: MapMouseEvent) {
     const marks = rendered(event.point, ['points'], 10)
     if (marks.length) return { kind: 'point' as const, id: String(marks[0].properties?.id ?? '') }
     // Far out, a place name is a bigger target than the street beneath it.
     const label = labelAt(event.point.x, event.point.y, map.getZoom() < 14 ? 20 : 7)
     if (label?.kind === 'place' && label.owner) return { kind: 'point' as const, id: label.owner }
-    if (label && label.kind !== 'house') return { kind: 'label' as const, label }
     // Still fading in below zoom 15, a house is not yet something to tap.
     const house = map.getZoom() >= 15 ? houseAt(event.point) : null
-    if (house) return { kind: 'house' as const, ...house, lat: event.lngLat.lat, lon: event.lngLat.lng }
+    // Names are painted over everything, but a street name showing across a building that stands in front of that street is not what the finger meant.
+    if (label && label.kind !== 'house' && !(house && standsBefore(map, house, label.lon, label.lat))) return { kind: 'label' as const, label }
+    if (house) return { kind: 'house' as const, ...house }
     if (label) return { kind: 'label' as const, label }
     return { kind: 'ground' as const, lat: event.lngLat.lat, lon: event.lngLat.lng }
   }
@@ -1794,6 +1828,8 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
 
   return {
     map, ready, labelAt, pick, houseAt, houseRing, fit, reveal, marker, destroy, setDrivingView,
+    /** Screen pixels from a ground point to the same point `metres` up, to stand a pin on a roof. */
+    liftOffset: (lon: number, lat: number, metres: number) => liftOffset(map, lon, lat, metres),
     setLabels, setPoints, setPointFocus, setSelection, setRoutes, setLiveRoads, setBuildings, setOsmBuildings, setBuildingInfo, setAdminBuildings, setCityObjects,
     setEditorShapes, vertex, setLocationArrow, setTravelMode,
   }
