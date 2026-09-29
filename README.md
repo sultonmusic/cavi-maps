@@ -1,5 +1,7 @@
 # Cavi Maps
 
+*by Capline Group*
+
 Offline-first 3D map of Tajikistan with an in-browser driving navigator, focused on Shaydon.
 Built with React 19, Vite and MapLibre GL 5. Interface language: Russian.
 

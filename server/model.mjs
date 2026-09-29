@@ -17,9 +17,12 @@ const bool = (value, label) => { if (typeof value !== 'boolean') throw new Error
 const number = (value, label, min, max) => { if (!Number.isFinite(value) || value < min || value > max) throw new Error(`Некорректное поле: ${label}`); return value; };
 export function validateRoad(input) {
   const result = { roadId: id(input.roadId), updatedAt: Date.now() };
-  if ('name' in input) result.name = text(input.name, 'Название дороги', 200);
-  if ('asphalt' in input) { if (input.asphalt !== null && !isLanes(input.asphalt)) throw new Error('Выберите число полос: от 0 до 6'); result.asphalt = input.asphalt; }
-  if (!('name' in result) && !('asphalt' in result)) throw new Error('Изменения не указаны');
+  // 'route/<route id>' edits a whole road (number and name, '' hides them); 'way/<id>' one OSM way.
+  const route = result.roadId.startsWith('route/');
+  if ('name' in input) result.name = route && input.name === '' ? '' : text(input.name, 'Название дороги', 200);
+  if ('ref' in input) { if (!route) throw new Error('Номер можно задать только дороге'); result.ref = text(input.ref, 'Номер дороги', 24, true); }
+  if ('asphalt' in input) { if (route) throw new Error('Полосы задаются для отдельного участка улицы'); if (input.asphalt !== null && !isLanes(input.asphalt)) throw new Error('Выберите число полос: от 0 до 6'); result.asphalt = input.asphalt; }
+  if (!('name' in result) && !('asphalt' in result) && !('ref' in result)) throw new Error('Изменения не указаны');
   return result;
 }
 export const validateDistrict = input => ({ districtId: id(input.districtId), name: text(input.name, 'Название микрорайона'), updatedAt: Date.now() });

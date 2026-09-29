@@ -1,7 +1,7 @@
-Atlas geographic data
+Cavi Maps geographic data (Capline Group)
 Source: OpenStreetMap contributors, extracted by Geofabrik (Tajikistan, 2026-09-06).
 https://download.geofabrik.de/asia/tajikistan.html
 Database license: Open Database License 1.0 (ODbL)
 https://opendatacommons.org/licenses/odbl/1-0/
 These JSON vector tiles are a derived database distributed under ODbL 1.0.
-The map is drawn by Atlas from these local geometries. No external raster map tiles are used.
+The map is drawn by Cavi Maps from these local geometries. No external raster map tiles are used.

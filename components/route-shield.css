@@ -1,0 +1,24 @@
+/* Road number shields, the same palette as the map (lib/road-labels.ts SHIELD_STYLE). */
+.route-shield{display:inline-flex;align-items:center;justify-content:center;flex:none;box-sizing:border-box;min-width:34px;height:20px;padding:0 6px;border-radius:4px;font:700 12px/1 Arial,sans-serif;letter-spacing:.2px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.route-shield.rb{color:#fff;background:linear-gradient(#c8312d 0 24%,#2458b8 24% 100%);border:1.5px solid #fff;box-shadow:0 0 0 1px #17396f;padding-top:3px}
+.route-shield.intl{color:#fff;background:#1d7f45;border:1.5px solid #fff;box-shadow:0 0 0 1px #0f4d29}
+.route-shield.rj{color:#1f1f1f;background:#fff;border:1.5px solid #2b2b2b}
+.route-shield.local{color:#3a3a3a;background:#fff;border:1.5px solid #8c8c8c}
+.route-shield.foreign{color:#5a5a5a;background:#eeeeea;border:1.5px solid #a3a3a3}
+.route-shield.none{color:#9aa39c;background:#f4f6f3;border:1.5px dashed #c3ccc5;font-weight:400}
+.route-shield.small{height:17px;min-width:28px;padding:0 5px;font-size:11px}
+.route-shield.rb.small{padding-top:2px}
+.admin-list-item>.route-shield{min-width:58px}
+.admin-routes-filters{flex-wrap:wrap}
+.admin-routes-filters>button{flex:1 0 auto}
+.admin-routes-caption{display:flex;gap:12px;align-items:flex-start}
+.admin-routes-caption>.route-shield{margin-top:3px}
+.admin-routes-caption strong{display:block;font-size:18px;line-height:1.3;overflow-wrap:anywhere}
+.admin-routes-caption small{display:block;margin-top:5px;font-size:11px}
+.admin-routes-streets{font-size:12px;line-height:1.6;color:#62756a;overflow-wrap:anywhere}
+.admin-routes-orphans{margin:8px 20px 20px;padding:14px;border-radius:12px;background:#fff7ec;display:grid;gap:10px;font-size:12px;color:#7a5b2c}
+.admin-routes-orphans>strong{font-size:13px;color:#5e4520}
+.admin-routes-orphans .admin-row{gap:8px}
+.admin-routes-orphans .admin-row>span{min-width:0;overflow-wrap:anywhere}
+.admin-routes-orphans .admin-button{font-size:12px;min-height:34px;padding:6px 10px;flex:none}
+.admin-routes-actions{display:grid;gap:8px}

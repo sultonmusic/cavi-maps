@@ -1,4 +1,4 @@
-# Управление картой Tajikistan Map
+# Управление картой Cavi Maps
 
 Карта: https://capline-tj-map.web.app  
 Администратор: https://capline-tj-map-admin.web.app  

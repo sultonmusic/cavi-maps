@@ -1,4 +1,4 @@
-# Atlas local geography
+# Cavi Maps: local geography
 
 The application renders MapLibre GL vector tiles that the browser encodes from the same-origin JSON bundles (`lib/mvt.ts`); nothing is fetched from a tile server. It does not use OpenStreetMap's tile servers, Overpass at runtime, remote map styles, or a remote routing service.
 

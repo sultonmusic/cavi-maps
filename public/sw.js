@@ -1,5 +1,5 @@
-/* Atlas local route cache. No analytics, external requests, or background GPS. */
-const CACHE_NAME = 'atlas-20260928-pages1';
+/* Cavi Maps offline cache: app shell, map data and saved routes. No analytics, external requests, or background GPS. */
+const CACHE_NAME = 'atlas-20260929-cavi1';
 const inFlight = new Map();
 // The site root: '/' on Firebase, '/cavi-maps/' on GitHub Pages. Paths below are written from that root.
 const ROOT = new URL('./', self.location.href).pathname;
@@ -10,7 +10,7 @@ const localUrl = value => {
   if (url.origin !== self.location.origin || !['http:', 'https:'].includes(url.protocol)) throw Error('Only local files');
   return url.href;
 };
-const isMapData = pathname => pathname.startsWith('/atlas-data/') || pathname.startsWith('/atlas-houses/') || pathname.startsWith('/atlas-roads/') || pathname.startsWith('/atlas-things/') || pathname.startsWith('/atlas-walks/') || /^\/graph-(?:nodes|edges)-\d+\.json$/.test(pathname) || ['/road-graph.json', '/places.json', '/streets.json', '/districts.json'].includes(pathname);
+const isMapData = pathname => pathname.startsWith('/atlas-data/') || pathname.startsWith('/atlas-houses/') || pathname.startsWith('/atlas-roads/') || pathname.startsWith('/atlas-things/') || pathname.startsWith('/atlas-walks/') || /^\/graph-(?:nodes|edges)-\d+\.json$/.test(pathname) || ['/road-graph.json', '/places.json', '/streets.json', '/districts.json', '/road-routes.json', '/road-routes-extra.json'].includes(pathname);
 
 async function remember(url, { force = false } = {}) {
   url = localUrl(url);
@@ -33,7 +33,7 @@ async function remember(url, { force = false } = {}) {
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const manifestResponse = await fetch(ROOT + 'offline-manifest.json', { cache: 'no-cache' });
-    if (!manifestResponse.ok) throw Error('Run scripts/build-offline-manifest.mjs after building Atlas');
+    if (!manifestResponse.ok) throw Error('Run scripts/build-offline-manifest.mjs after building Cavi Maps');
     const manifest = await manifestResponse.json();
     for (const url of manifest.urls) await remember(url, { force: true });
     await self.skipWaiting();
@@ -71,7 +71,7 @@ self.addEventListener('fetch', event => {
         const shell = await cache.match(new URL(ROOT + 'index.html', self.location.origin));
         if (shell) return shell;
       }
-      return new Response('Нет связи с локальным Atlas. Этот файл ещё не сохранён на устройстве.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+      return new Response('Нет связи с Cavi Maps. Этот файл ещё не сохранён на устройстве.', { status: 503, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     } finally { clearTimeout(timeout); }
   })());
 });

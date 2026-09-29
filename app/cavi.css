@@ -1,0 +1,125 @@
+/* Cavi Maps: the brand on the map, search polish for the whole country and the Profile page.
+   Imported last in main.tsx, after globals.css and navigation.css, so these rules win at equal
+   specificity. Palette: #00866a brand, #007d61 dark, #183c34 text, #78897f muted, #e4ece7 lines,
+   #f5f8f6 surface. Touch targets are at least 44 px. */
+
+/* ---- brand ---------------------------------------------------------------------------------- */
+.cavi-mark{display:block;flex-shrink:0}
+.atlas .map-label{gap:8px;padding:8px 12px 8px 8px}
+.atlas .map-label b{font-weight:800;letter-spacing:-.3px;color:#183c34;white-space:nowrap}
+.atlas .map-label>span:last-child{display:inline;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(min-width:761px){
+ .atlas .brand-eyebrow{display:flex;align-items:center;gap:8px;letter-spacing:1.6px;color:#183c34}
+ .atlas .brand-eyebrow span{letter-spacing:0;font-weight:400;color:#8a998f}
+}
+
+/* ---- city row: the town name is the selector ------------------------------------------------ */
+.atlas .city-row{align-items:center}
+.atlas .city-trigger{height:auto;min-height:44px;border:0;background:none;padding:0 4px 0 0;font-size:26px;font-weight:700;letter-spacing:-1px;color:#183c34;gap:6px;box-shadow:none;max-width:calc(100% - 56px)}
+.atlas .city-trigger:hover{background:none;color:#007d61}
+.atlas .city-trigger:focus-visible{outline:2px solid #00866a;outline-offset:3px;border-radius:8px}
+.atlas .city-trigger [data-slot=select-value]{overflow:hidden;text-overflow:ellipsis}
+.atlas .city-trigger svg{width:20px;height:20px;color:#78897f}
+.atlas .city-locate{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:#e8f4ec;color:#007d61;flex-shrink:0}
+.atlas .city-locate:hover{background:#dcefe3}
+.atlas .city-locate[aria-busy=true] svg{animation:cavi-pulse 1s infinite}
+@keyframes cavi-pulse{50%{opacity:.35}}
+@media(max-width:760px){.atlas .city-trigger{font-size:24px}}
+/* Region headings in the town list. */
+[data-slot=select-label]{font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#7a8a82}
+
+/* ---- chips ---------------------------------------------------------------------------------- */
+.atlas .categories button{min-height:40px}
+.atlas .categories button[aria-pressed=true]{background:#007d61;color:#fff;border-color:#007d61}
+
+/* ---- results -------------------------------------------------------------------------------- */
+.atlas .results-title{gap:8px}
+.atlas .results-title span{margin-left:auto}
+.atlas .results-title .saved-exit{margin-left:0;font-size:13px;color:#007d61;background:#e8f4ec;border-radius:8px;padding:6px 10px;min-height:32px;white-space:nowrap}
+.atlas .empty ul{padding-left:18px;font-size:13px;line-height:1.5;list-style:disc;color:#53685d}
+.atlas .empty .empty-actions{display:flex;flex-wrap:wrap;gap:8px}
+.atlas .place-text small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.atlas .pick-banner{z-index:9}
+.atlas .pick-banner button{min-height:44px;padding:0 12px;border-radius:9px;background:#e8f4ec;color:#007d61;font-weight:600;flex-shrink:0}
+.atlas .error>span{flex:1;min-width:0}
+.atlas .error a{color:#007d61;font-weight:600;white-space:nowrap;align-self:center;margin:0 6px}
+.place-actions>button.share{flex:0 0 48px;padding:0}
+
+/* ---- admin brand ---------------------------------------------------------------------------- */
+.admin-logo>div{letter-spacing:-.8px}
+.admin-logo small{white-space:nowrap}
+
+/* ---- Profile (the Sheet is portaled out of .atlas, so everything hangs off .profile-sheet) ---- */
+.profile-sheet[data-slot=sheet-content]{width:100%;max-width:440px;background:#f5f8f6;padding-top:0;gap:0;overscroll-behavior:contain}
+/* The sheet is a scrolling flex column: without this, the sections (overflow:hidden, so their minimum
+   height is 0) would shrink to fit the screen and cut off their rows instead of scrolling. */
+.profile-sheet[data-slot=sheet-content]>*{flex-shrink:0}
+.profile-sheet [data-slot=sheet-close]{top:14px;right:12px;background:#fff;border-radius:12px}
+.profile-top{padding:22px 60px 4px 20px;font-size:26px;font-weight:700;letter-spacing:-.6px;color:#183c34}
+.profile-hero{margin:12px 16px 0;display:flex;align-items:center;gap:14px;padding:16px;background:#fff;border:1px solid #e4ece7;border-radius:16px}
+.profile-hero>div{min-width:0}
+.profile-hero strong{display:block;font-size:21px;font-weight:800;letter-spacing:-.5px;color:#183c34;line-height:1.2}
+.profile-hero small{display:block;font-size:12px;color:#78897f}
+.profile-pill{margin-left:auto;font-size:12px;padding:5px 10px;border-radius:999px;background:#e8f4ec;color:#007d61;white-space:nowrap}
+.profile-pill.is-offline{background:#fff4e0;color:#9a5b12}
+.profile-note{padding:8px 20px 0;font-size:12px;line-height:1.5;color:#78897f}
+.profile-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 16px 0}
+.profile-stat{background:#fff;border:1px solid #e4ece7;border-radius:14px;padding:12px;text-align:left;min-width:0}
+.profile-stat b{display:block;font-size:19px;color:#183c34;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.profile-stat span{font-size:12px;color:#78897f}
+.profile-section{margin:14px 16px 0;background:#fff;border:1px solid #e4ece7;border-radius:16px;overflow:hidden}
+.profile-section>h3{font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#7a8a82;padding:14px 16px 4px}
+
+.profile-item{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:10px 16px;text-align:left;color:#183c34;text-decoration:none;border-top:1px solid #eef3f0;background:none;font:inherit;cursor:default}
+button.profile-item,a.profile-item,label.profile-item{cursor:pointer}
+button.profile-item:hover,a.profile-item:hover,.profile-item-main:hover{background:#f7faf8}
+.profile-section>h3+.profile-item{border-top:0}
+.profile-item>svg:first-child,.profile-item-main>svg:first-child{color:#00866a;flex-shrink:0}
+.profile-item>span,.profile-item-main>span{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;font-size:15px;font-weight:600;line-height:1.3}
+.profile-item small{font-size:12px;font-weight:400;color:#78897f;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.profile-item-main{display:flex;align-items:center;gap:12px;flex:1;min-width:0;min-height:44px;padding:0;margin:-6px 0;background:none;border:0;text-align:left;color:inherit;font:inherit;border-radius:10px;cursor:pointer}
+.profile-sub{min-height:50px;padding-left:24px}
+.profile-sub .profile-item-main>svg:first-child{color:#a7b8ac}
+.profile-sub .profile-item-main>span{font-weight:500;font-size:14px}
+.profile-quiet{min-height:48px;color:#53685d}
+.profile-quiet>svg:first-child{color:#a7b8ac}
+.profile-quiet>span{font-weight:500;font-size:14px}
+.profile-action{font-size:13px;font-weight:600;color:#007d61;background:#e8f4ec;border-radius:9px;padding:8px 12px;min-height:36px;flex-shrink:0;white-space:nowrap;position:relative}
+/* The pill is 36 px tall; its touch area reaches 44 px. */
+.profile-action::before{content:'';position:absolute;inset:-4px -2px}
+.profile-action:hover{background:#dcefe3}
+.profile-action:disabled{opacity:.45;cursor:not-allowed}
+.profile-action.is-done{background:none;color:#78897f;padding-right:0}
+.profile-action.is-done::before{content:none}
+.profile-icon-btn{width:44px;height:44px;margin-right:-10px;display:grid;place-items:center;color:#a7b8ac;flex-shrink:0;border-radius:10px}
+.profile-icon-btn:hover{color:#b3261e;background:#fbeeee}
+
+.profile-switch{width:44px;height:26px;border-radius:13px;background:#cdd8d2;position:relative;flex-shrink:0;transition:background .2s}
+.profile-switch::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0003;transition:transform .2s}
+.profile-switch[aria-checked=true],.profile-toggle[aria-checked=true] .profile-switch{background:#00866a}
+.profile-switch[aria-checked=true]::after,.profile-toggle[aria-checked=true] .profile-switch::after{transform:translateX(18px)}
+.profile-switch:disabled,.profile-toggle:disabled{opacity:.45;cursor:not-allowed}
+.profile-toggle:disabled:hover{background:none}
+
+.profile-label{padding:12px 16px 6px;font-size:14px;font-weight:600;color:#183c34;border-top:1px solid #eef3f0}
+.profile-modes{display:flex;flex-wrap:wrap;gap:6px;padding:4px 16px 14px}
+.profile-modes button{display:flex;align-items:center;gap:6px;border:1px solid #e0e8e3;border-radius:9px;padding:8px 10px;font-size:13px;color:#53685d;min-height:40px;background:#fff}
+.profile-modes button:hover{border-color:#00866a}
+.profile-modes button[aria-pressed=true]{background:#007d61;border-color:#007d61;color:#fff}
+.profile-select{font:inherit;font-size:14px;color:#183c34;border:1px solid #cbdcd2;border-radius:10px;background:#f6f9f7;padding:8px 10px;min-height:44px;max-width:55%;flex-shrink:0}
+.profile-select:disabled{opacity:.6}
+/* «Сохранить участок»: the list of places takes its own line under the title. */
+.profile-area{flex-wrap:wrap;row-gap:8px}
+.profile-area .profile-select{flex:1 1 100%;max-width:none;margin-left:32px}
+.profile-job{display:flex;align-items:center;gap:10px;padding:0 16px 12px 48px}
+.profile-job .profile-hint{flex:1;padding:0;min-width:0}
+.profile-job .profile-action{margin-left:auto}
+.profile-progress{height:6px;border-radius:3px;background:#e4ece7;overflow:hidden;margin:0 16px 10px 48px}
+.profile-progress i{display:block;height:100%;background:#00866a;transition:width .3s}
+.profile-empty,.profile-hint{padding:4px 16px 14px;font-size:13px;color:#78897f;line-height:1.5}
+.profile-danger{color:#b3261e}
+.profile-danger>svg:first-child{color:#b3261e}
+.profile-danger:disabled{opacity:.5}
+.profile-footer{padding:20px 20px calc(var(--atlas-nav-total) + 24px);font-size:12px;color:#8a998f;line-height:1.6;text-align:center}
+.profile-sheet :is(button,a,select,label):focus-visible{outline:2px solid #00866a;outline-offset:-2px;border-radius:10px}
+@media(prefers-reduced-motion:reduce){.profile-switch,.profile-switch::after,.profile-progress i{transition:none}.atlas .city-locate[aria-busy=true] svg{animation:none}}

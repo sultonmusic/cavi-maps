@@ -8,7 +8,8 @@ service cloud.firestore {
     function businessVisible(businessId) { let business = get(/databases/$(database)/documents/businesses/$(businessId)); return business.data.published == true && business.data.reviewsEnabled == true; }
     match /roadEdits/{id} {
       allow read: if true;
-      allow create, update: if admin() && request.resource.data.keys().hasOnly(['roadId','name','asphalt','updatedAt']) && nonempty(request.resource.data.roadId,150) && (!('name' in request.resource.data) || nonempty(request.resource.data.name,200)) && (!('asphalt' in request.resource.data) || request.resource.data.asphalt == null || request.resource.data.asphalt in [0,1,2,3,4,5,6]) && request.resource.data.updatedAt is number;
+      // 'route/<route id>' documents edit a whole road: ref (number, '' hides it) and name ('' hides it), never asphalt.
+      allow create, update: if admin() && request.resource.data.keys().hasOnly(['roadId','name','ref','asphalt','updatedAt']) && nonempty(request.resource.data.roadId,150) && (!('name' in request.resource.data) || nonempty(request.resource.data.name,200) || (request.resource.data.name == '' && request.resource.data.roadId.matches('route/.+'))) && (!('ref' in request.resource.data) || (request.resource.data.roadId.matches('route/.+') && optionalText(request.resource.data.ref,24))) && (!('asphalt' in request.resource.data) || (!request.resource.data.roadId.matches('route/.+') && (request.resource.data.asphalt == null || request.resource.data.asphalt in [0,1,2,3,4,5,6]))) && request.resource.data.updatedAt is number;
       allow delete: if admin();
     }
     match /districtEdits/{id} {

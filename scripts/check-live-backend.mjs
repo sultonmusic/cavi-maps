@@ -53,6 +53,25 @@ try {
   abort.abort();
   assert.equal((await call('state')).data.roads['road/1'].name, 'Улица 1');
   assert.equal((await call('state')).data.roads['road/1'].asphalt, null);
+  // Whole-road edits: 'route/<route id>' carries a number and a name, '' hides either; ways never carry a number.
+  assert.equal(validateRoad({ roadId: 'route/ref:РБ04', ref: 'РБ04' }).ref, 'РБ04');
+  assert.equal(validateRoad({ roadId: 'route/name:123', name: '' }).name, '');
+  assert.throws(() => validateRoad({ roadId: 'way/1', name: '' }));
+  assert.throws(() => validateRoad({ roadId: 'way/1', ref: 'X1' }));
+  assert.throws(() => validateRoad({ roadId: 'route/ref:R-303', ref: 'R'.repeat(25) }));
+  assert.equal((await call('roads', 'PUT', { roadId: 'route/ref:R-303', ref: 'R-303', name: 'Шайдонская дорога' }, true)).status, 200);
+  assert.equal((await call('state')).data.roads['route/ref:R-303'].name, 'Шайдонская дорога');
+  assert.equal((await call('roads', 'PUT', { roadId: 'route/ref:R-303', name: '' }, true)).status, 200);
+  assert.deepEqual([(await call('state')).data.roads['route/ref:R-303'].name, (await call('state')).data.roads['route/ref:R-303'].ref], ['', 'R-303']);
+  assert.equal((await call('roads', 'PUT', { roadId: 'route/ref:R-303', ref: '' }, true)).status, 200);
+  assert.equal((await call('state')).data.roads['route/ref:R-303'].ref, '');
+  assert.equal((await call('roads', 'PUT', { roadId: 'way/1', ref: 'X1' }, true)).status, 400);
+  assert.equal((await call('roads', 'PUT', { roadId: 'route/ref:R-303', ref: '<b>' }, true)).status, 400);
+  assert.equal((await call('roads', 'PUT', { roadId: 'route/ref:R-303', asphalt: 2 }, true)).status, 400);
+  assert.equal((await call('roads', 'DELETE', { id: 'route/ref:R-303' })).status, 401);
+  assert.equal((await call('roads', 'DELETE', { id: 'route/ref:R-303' }, true)).status, 200);
+  assert.equal('route/ref:R-303' in (await call('state')).data.roads, false);
+  assert.equal((await call('state')).data.roads['road/1'].name, 'Улица 1');
   assert.equal((await call('districts', 'PUT', { districtId: 'district-1', name: '1 микрорайон' }, true)).status, 200);
   assert.equal((await call('businesses', 'PUT', business, true)).status, 200);
   assert.equal((await call('state')).data.businesses.length, 0);
@@ -84,7 +103,7 @@ try {
   assert.equal((await call('roads', 'PUT', { roadId: 'road/1', name: 'Blocked' }, true)).status, 401);
   for (let i = 0; i < 11; i++) await call('login', 'POST', { username: 'fixture-admin', password: 'bad' });
   assert.equal((await call('login', 'POST', { username: 'fixture-admin', password: 'bad' })).status, 429);
-  console.log('PASS: authentication, hashed credentials, authorization, CSRF, validation, SSE, atomic persistence, draft isolation, moderated reviews, logout and login rate limit.');
+  console.log('PASS: authentication, hashed credentials, authorization, CSRF, validation, whole-road numbers and names, SSE, atomic persistence, draft isolation, moderated reviews, logout and login rate limit.');
 } finally {
   handler.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
   const resolved = path.resolve(root); if (!resolved.startsWith(path.resolve(os.tmpdir()) + path.sep) || !path.basename(resolved).startsWith('atlas-backend-test-')) throw new Error('Unexpected test directory');

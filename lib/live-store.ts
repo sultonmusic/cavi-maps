@@ -9,7 +9,12 @@ import { validateBuilding, validateBuildingInfo, encodeCloudBuilding, decodeClou
 import { validateCityObject, encodeCloudCityObject, decodeCloudCityObject } from './city-objects.mjs'
 import { isLanes, type Lanes } from './lanes.mjs'
 
-export type RoadEdit = { roadId: string; name?: string; asphalt?: null | Lanes; updatedAt?: number }
+/**
+ * A road edit. `way/<id>` edits one OSM way (name, asphalt). `route/<route id>` edits a whole road
+ * from public/road-routes.json (e.g. `route/ref:R-303`): `ref` is its number ('' hides the shield),
+ * `name` its title ('' hides the name). A route edit never carries asphalt; a way edit never carries ref.
+ */
+export type RoadEdit = { roadId: string; name?: string; ref?: string; asphalt?: null | Lanes; updatedAt?: number }
 export type DistrictEdit = { districtId: string; name: string; updatedAt?: number }
 export type Business = { id: string; name: string; lat: number; lon: number; category: string; info: string; phone: string; email: string; website: string; address: string; hours: string; menu: { id: string; name: string; price: number; currency: 'TJS'; description: string }[]; reviewsEnabled: boolean; published: boolean; updatedAt?: number }
 export type Building = { id: string; name?: string; geometry: { type: 'Polygon'; coordinates: number[][][] }; source: 'admin'; height?: number; levels?: number; roof?: RoofShape; updatedAt?: number }
@@ -137,7 +142,18 @@ export function useLiveMap(admin = false) {
     else await api(endpoint, 'PUT', value)
   }), [perform])
   const remove = useCallback((endpoint: string, col: string, id: string) => perform(async () => { if (!sessionRef.current?.admin) throw new Error('Войдите в панель администратора'); if (runtime.current?.db) await deleteDoc(doc(runtime.current.db, col, firebaseId(id))); else await api(endpoint, 'DELETE', { id }) }), [perform])
-  const saveRoad = useCallback(async (edit: RoadEdit) => { if (edit.name !== undefined) validName(edit.name); if (edit.asphalt !== undefined && edit.asphalt !== null && !isLanes(edit.asphalt)) throw new Error('Некорректное число полос'); await save('roads', 'roadEdits', edit.roadId, { ...edit, updatedAt: Date.now() }, true) }, [save])
+  const saveRoad = useCallback(async (edit: RoadEdit) => {
+    const route = edit.roadId.startsWith('route/')
+    if (edit.name !== undefined && !(route && edit.name === '')) validName(edit.name)
+    if (edit.ref !== undefined) {
+      if (!route) throw new Error('Номер можно задать только дороге')
+      if (typeof edit.ref !== 'string' || edit.ref.length > 24 || /[<>\u0000-\u001f]/.test(edit.ref)) throw new Error('Проверьте номер дороги: до 24 символов, без HTML')
+    }
+    if (route && edit.asphalt !== undefined) throw new Error('Полосы задаются для отдельного участка улицы')
+    if (edit.asphalt !== undefined && edit.asphalt !== null && !isLanes(edit.asphalt)) throw new Error('Некорректное число полос')
+    await save('roads', 'roadEdits', edit.roadId, { ...edit, updatedAt: Date.now() }, true)
+  }, [save])
+  const deleteRoad = useCallback((roadId: string) => remove('roads', 'roadEdits', roadId), [remove])
   const saveDistrict = useCallback(async (edit: DistrictEdit) => { validName(edit.name); await save('districts', 'districtEdits', edit.districtId, { ...edit, updatedAt: Date.now() }) }, [save])
   const saveBusiness = useCallback(async (business: Business) => {
     validName(business.name); if (!Number.isFinite(business.lat) || !Number.isFinite(business.lon)) throw new Error('Укажите положение на карте')
@@ -164,5 +180,5 @@ export function useLiveMap(admin = false) {
     } else await api('reviews', 'POST', input)
   }), [perform])
   const moderateReview = useCallback((id: string, status: Review['status']) => perform(async () => { if (!sessionRef.current?.admin) throw new Error('Войдите в панель администратора'); if (!['pending', 'approved', 'rejected'].includes(status)) throw new Error('Некорректный статус'); if (runtime.current?.db) await updateDoc(doc(runtime.current.db, 'reviews', firebaseId(id)), { status, updatedAt: Date.now() }); else await api('reviews/moderate', 'PUT', { id, status }) }), [perform])
-  return { state, ready, connected, error, session, login, logout, saveRoad, saveDistrict, saveBusiness, deleteBusiness, saveBuilding, deleteBuilding, saveBuildingInfo, deleteBuildingInfo, saveCityObject, deleteCityObject, submitReview, moderateReview }
+  return { state, ready, connected, error, session, login, logout, saveRoad, deleteRoad, saveDistrict, saveBusiness, deleteBusiness, saveBuilding, deleteBuilding, saveBuildingInfo, deleteBuildingInfo, saveCityObject, deleteCityObject, submitReview, moderateReview }
 }

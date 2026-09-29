@@ -9,3 +9,4 @@ import './app/globals.css';
 const isAdmin=location.pathname.replace(/\/$/,'')===siteUrl('/admin')||location.hostname==='capline-tj-map-admin.web.app'||location.hostname==='capline-tj-map-admin.firebaseapp.com';
 createRoot(document.getElementById('root')!).render(isAdmin?<Admin/>:<Home/>);
 import './app/navigation.css';
+import './app/cavi.css';

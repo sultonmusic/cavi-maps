@@ -28,7 +28,7 @@ assert.deepEqual(turnPrompt('right', 30, 'car'), { stage: 3, text: 'Поверн
 assert.equal(turnPrompt('left', 300, 'foot'), null, 'a pedestrian hears it nearer');
 assert.deepEqual(turnPrompt('uturn', 40, 'foot'), { stage: 2, text: 'Через 40 метров развернитесь' });
 assert.deepEqual(turnPrompt('arrive', 10, 'bike'), { stage: 3, text: 'Точка Б впереди' }, 'arrival itself is announced once, with the thank-you');
-assert.equal(arrivalPhrase(true), 'Вы прибыли в точку Б. Спасибо, что выбрали Атлас Мэп');
-assert.equal(arrivalPhrase(false), 'Конец маршрута. Спасибо, что выбрали Атлас Мэп');
+assert.equal(arrivalPhrase(true), 'Вы прибыли в точку Б. Спасибо, что выбрали Кави Мапс');
+assert.equal(arrivalPhrase(false), 'Конец маршрута. Спасибо, что выбрали Кави Мапс');
 
 console.log('PASS: six travel modes with their networks and speeds, keep-right positions for drivers, cyclists and pedestrians, and Russian turn prompts with correct plurals.');
