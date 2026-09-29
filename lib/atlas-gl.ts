@@ -13,6 +13,8 @@ import { siteUrl } from './site-url'
 import { Map as GLMap, Marker, LngLatBounds, MercatorCoordinate, ScaleControl, addProtocol, type CustomLayerInterface, type GeoJSONSource, type MapMouseEvent, type RequestParameters, type StyleSpecification } from 'maplibre-gl'
 import { encodeTile, type MvtFeature, type MvtLayer } from './mvt'
 import { houseGroupOf, housesInTile, indexHouses, type HouseIndex } from './country-houses.mjs'
+import { landmarkLayer } from './landmark-layer'
+import { landmarkPlace, landmarkTileFilter } from './landmarks.mjs'
 import { bindSolid, composeMatrix, solidProgram, unbindSolid, type SolidProgram } from './gl-kit'
 import { LEAVES, SUN, block, blob, facet, rectangleAround, unit, type Rectangle, type Vec3 } from './mesh-kit.mjs'
 import { houseTone, liftedHeight, outlineTone } from './facades.mjs'
@@ -278,7 +280,9 @@ function registerProtocol() {
     try {
       const name = `${group[0]}-${group[1]}`
       if (!(await loadHouseList()).has(name)) return { data: new Uint8Array(0) }
-      const houses = housesInTile(await houseFile(name), group[0], group[1], z, x, y)
+      // Houses standing where a landmark is modelled (the stray shed on the stadium's east facade) give way to its mesh.
+      const hide = landmarkTileFilter(z, x, y)
+      const houses = housesInTile(await houseFile(name), group[0], group[1], z, x, y).filter(house => !hide?.(house.ring))
       const features: MvtFeature[] = houses.map(house => {
         // Tone and height exactly as lib/detail-layer.ts dresses the same house. Each house keeps its record
         // number as its key, so a tap can name it; `stated` marks a height a source gives, never an estimate.
@@ -1039,6 +1043,8 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
   const ready = loadTileIndex()
   const meshes = meshLayer(map)
   const arrow = locationArrow(map)
+  // Hand-modelled landmarks (the National Stadium), drawn under the selection, routes and place markers.
+  const landmarks = landmarkLayer(map, { solidProgram, bindSolid, unbindSolid, composeMatrix })
   // Close-up facades, grey roofs, parapets, rooftop boxes and street trees (lib/detail-layer.ts).
   let houseFeatures: HouseFeature[] = [], adminDrawn: AdminBuilding[] = []
   const detail = detailLayer(map, {
@@ -1067,6 +1073,10 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
   function flush() {
     if (!map.getLayer(detail.layer.id)) {
       try { map.addLayer(detail.layer, map.getLayer('selection-fill') ? 'selection-fill' : undefined) } catch { /* the style is still being parsed */ }
+    }
+    // Landmarks go under 'selection-fill' too, so selections, routes and place markers draw over them.
+    if (!map.getLayer(landmarks.layer.id)) {
+      try { map.addLayer(landmarks.layer, map.getLayer('selection-fill') ? 'selection-fill' : undefined) } catch { /* the style is still being parsed */ }
     }
     // Roofs and flagpoles first, so the arrow stays the last thing drawn.
     for (const custom of [meshes.layer, arrow.layer]) {
@@ -1651,6 +1661,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       const solids: BuildingSolid[] = []
       for (const roof of houseRoofs) { const record = roof.key ? houseByKey.get(roof.key) : undefined; if (record) solids.push({ record, roof: roof.shape, base: roof.base }) }
       for (const roof of adminRoofs) { const record = roof.key ? adminByKey.get(roof.key) : undefined; if (record) solids.push({ record, roof: roof.shape, base: roof.base }) }
+      solids.push(...landmarks.solids())
       return solids
     },
   }
@@ -1672,8 +1683,12 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
     const house = map.getZoom() >= 15 ? houseAt(event.point) : null
     // Names are painted over everything, but a street name showing across a building that stands in front of that street is not what the finger meant.
     if (label && label.kind !== 'house' && !(house && standsBefore(map, house, label.lon, label.lat))) return { kind: 'label' as const, label }
-    if (house) return { kind: 'house' as const, ...house }
+    // A landmark found along the line of sight opens its place, as its disc would.
+    if (house) return house.source === 'landmark' ? { kind: 'point' as const, id: landmarkPlace(house.key)?.id ?? house.key } : { kind: 'house' as const, ...house }
     if (label) return { kind: 'label' as const, label }
+    // Below the houses' zoom a landmark is only its own mesh, which MapLibre cannot query: test its silhouette on screen.
+    const landmark = landmarks.hit(event.point)
+    if (landmark) return { kind: 'point' as const, id: landmark.place.id }
     return { kind: 'ground' as const, lat: event.lngLat.lat, lon: event.lngLat.lng }
   }
 

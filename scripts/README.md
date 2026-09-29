@@ -63,3 +63,17 @@ Walls take one of eight light tones under a map-anchored light (BUILDING_LIGHT),
 Shop fronts come from every place the map has shown so far (atlas.setPoints feeds detail.addPlaces). A category filter never takes one away, and only a newly seen shop near the middle triggers a rebuild. New houses, streets or mapped trees call detail.invalidate().
 
 On phones with 2 GB of memory or less, the radius shrinks to 320 m. The Profile switch «Подробные здания» (lib/profile-store.ts readBuildingDetail, atlas.setBuildingDetail) turns the layer off; `atlas.buildingDetailStats()` reports the last rebuild. The GL and mesh helpers shared by every custom 3D layer live in lib/gl-kit.ts and lib/mesh-kit.mjs.
+
+### Landmarks
+`check-landmarks.mjs` checks the hand-modelled landmarks in lib/landmarks.mjs, drawn by lib/landmark-layer.ts (custom layer 'landmarks', before 'selection-fill'). For the National Stadium it checks that:
+- the model sits on OSM way 1076243310 within 0.6 m
+- it stays at or under 110,000 vertices, and day and night share one layout
+- every vertex stays inside the paved apron and the layer's culling extent
+- its verge trees stay at least 20 m, and the apron edge at least 6 m, from every street line in public/atlas-data
+- exactly house #33101 of public/atlas-houses/2830-1571.bin is hidden, both directly and through the houses:// tile filter at zoom 13-16
+- it answers taps and search («центральный стадион»)
+- the facade switches to night at 19:30-05:30 Dushanbe time
+
+In the app, the tap finds the stadium along the line of sight among the buildings (landmarks.solids() in the pick catalogue) and, below the houses' zoom, by its on-screen silhouette after house-number labels; either opens its place. page.tsx adds landmarkPlaces() to the places from places.json unless places.json already has the id.
+
+If scripts/build-country-houses.py is re-run from a new extract, look up the shed's new record index and update 33101. To add a landmark, append a LANDMARKS entry with its own build(night) generator, reusing meshWriter, roundedRing and box.

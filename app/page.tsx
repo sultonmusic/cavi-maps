@@ -9,6 +9,7 @@ import RoutePlanner from '@/components/route-planner';
 import {useLiveMap} from '@/lib/live-store';
 import {createAtlasGL, composeLabels, baseLabels, type AtlasGL, type AtlasLabel, type BuildingData, type SelectionGeometry} from '@/lib/atlas-gl';
 import {isLanes,isOneway} from '@/lib/lanes.mjs';
+import {landmarkPlace,landmarkPlaces} from '@/lib/landmarks.mjs';
 import {poiNearby,poiStyle} from '@/lib/poi-icons.mjs';
 import {poiPinSvg} from '@/lib/poi-draw';
 import {floorsLabel,floorsOf} from '@/lib/building-ray.mjs';
@@ -76,7 +77,7 @@ const areaPlaces=useMemo(()=>districts.map(d=>districtPlace(d)),[districts]);
 const allPlaces=useMemo(()=>[...visiblePlaces,...streetPlaces,...areaPlaces],[visiblePlaces,streetPlaces,areaPlaces]);
 const [aboutOpen,setAboutOpen]=useState(false),[sheet,setSheet]=useState<Sheet>('half'),[tab,setTab]=useState<Tab>('search'),[tilted,setTilted]=useState(false);
 const atlas=useRef<AtlasGL|null>(null),node=useRef<HTMLDivElement>(null),sheetNode=useRef<HTMLElement>(null),drag=useRef<{y:number;height:number;from:number}|null>(null),destinationMarker=useRef<Marker|null>(null),locationMarker=useRef<Marker|null>(null),pointIndex=useRef(new Map<string,Place>()),houseShape=useRef<SelectionGeometry|null>(null),routePick=useRef<((p:Place)=>boolean)|null>(null),pointHandler=useRef<(p:Place,label?:LabelHit)=>void>(()=>{});
-useEffect(()=>{let cancelled=false;try{setSaved(JSON.parse(localStorage.getItem('atlas-saved')||'[]'))}catch{}fetch(siteUrl('/places.json')).then(r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{if(!cancelled){let custom:Place[]=[];try{const value=JSON.parse(localStorage.getItem('atlas-custom-points')||'[]');if(Array.isArray(value))custom=value.filter(p=>(p?.id?.startsWith('point:')||p?.id?.startsWith('house:'))&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.tags)}catch{}setPlaces([...(data as Place[]),...custom])}}).catch(()=>setError('Не удалось загрузить места. Обновите страницу.'));
+useEffect(()=>{let cancelled=false;try{setSaved(JSON.parse(localStorage.getItem('atlas-saved')||'[]'))}catch{}fetch(siteUrl('/places.json')).then(r=>{if(!r.ok)throw Error();return r.json()}).then(data=>{if(!cancelled){let custom:Place[]=[];try{const value=JSON.parse(localStorage.getItem('atlas-custom-points')||'[]');if(Array.isArray(value))custom=value.filter(p=>(p?.id?.startsWith('point:')||p?.id?.startsWith('house:'))&&Number.isFinite(p.lat)&&Number.isFinite(p.lon)&&p.tags)}catch{}{const known=new Set((data as Place[]).map(p=>p.id));setPlaces([...(data as Place[]),...landmarkPlaces().filter(p=>!known.has(p.id)),...custom])}}}).catch(()=>setError('Не удалось загрузить места. Обновите страницу.'));
 fetch(siteUrl('/streets.json')).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{if(!cancelled)setRoads(d.roads)}).catch(()=>{if(!cancelled)setError('Названия улиц не загрузились. Обновите страницу.')});
 fetch(siteUrl('/districts.json')).then(r=>r.ok?r.json():null).then(d=>{if(!cancelled&&d)setDistricts(d.districts)}).catch(()=>{});
 fetch(siteUrl('/shaydon-buildings.json')).then(r=>r.ok?r.json():null).then(d=>{if(!cancelled&&d)setBuildingData(d)}).catch(()=>{});
@@ -121,7 +122,7 @@ useEffect(()=>{const instance=atlas.current;if(!ready||!instance)return;
  const surface=instance.map.getCanvasContainer();
  surface.addEventListener('pointerdown',collapse);
  const handler=(event:any)=>{const hit=instance.pick(event);
-  if(hit.kind==='point'){const known=pointIndex.current.get(hit.id);if(known){pointHandler.current(known);return}}
+  if(hit.kind==='point'){const known=pointIndex.current.get(hit.id)??landmarkPlace(hit.id);if(known){pointHandler.current(known);return}}
   if(hit.kind==='house'){houseShape.current=hit.shape;pointHandler.current(housePlace(hit));return}
   const p:Place={id:`point:${event.lngLat.lat.toFixed(7)},${event.lngLat.lng.toFixed(7)}`,lat:event.lngLat.lat,lon:event.lngLat.lng,tags:{name:'Точка на карте'}};
   pointHandler.current(p,hit.kind==='label'?hit.label:undefined)};
