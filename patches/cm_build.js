@@ -185,7 +185,7 @@ function CmBuild(roads, dashes) {
   var live = [], marks = [];
   ch.forEach(function (x) {
     var sc = CmS(x.c, fixed);
-    live.push(F('LineString', { id: x.id, w: x.w, ow: x.ow ? 1 : 0 }, sc));
+    live.push(F('LineString', { id: x.id, w: x.w, wc: Math.round(x.w * 10), ow: x.ow ? 1 : 0 }, sc));
     dashes({ asphalt: x.asphalt, oneway: x.ow, coordinates: sc }, function (p) { return Math.max.apply(null, [0].concat(halves(CmKey(p), x))); }).forEach(function (d) { marks.push(F('LineString', { kind: d.kind }, d.coordinates)); });
     [[sc, x.fw], [x.ow ? null : sc.slice().reverse(), x.bw]].forEach(function (dir) {
       var line = dir[0], codes = dir[1];
@@ -232,4 +232,39 @@ function CmLaneTip(kind, lanes, mode, metres) {
   if (kind === 'right') return 'Займите правый ряд';
   if (kind === 'left' || kind === 'uturn') return 'Займите левый ряд';
   return '';
+}
+
+/* Road widths as zoom-only expressions, one layer per width class. A width that depends on both
+   the feature and the zoom is baked per tile for the tile's own zoom and the next one only, so in
+   a pitched (3D) view the lower-zoom tiles far away drew roads up to ~1.5x too narrow and the road
+   seemed to jump in width at the tile edge. With the class in the filter, every tile draws the
+   same width. */
+var CmClasses = [34, 46, 68, 102, 136, 170, 204, 272, 340, 408];
+function CmWz(m, casing) {
+  var px = function (z) { return (m + (casing ? 1.4 : 0)) * Math.pow(2, z) / 61170; }, st = [];
+  wf.forEach(function (q) { if (q[0] < 16) st.push(q[0], (casing ? Math.min(2.2, Math.max(0.5, q[1] * 0.3)) : 0) + q[1]); });
+  st.push(16, Math.max(casing ? 9 : 7.3, px(16)), 17, Math.max(casing ? 11.5 : 9, px(17)), 18, Math.max(casing ? 14 : 11, px(18)), 22, px(22));
+  return ['interpolate', ['exponential', 2], ['zoom']].concat(st);
+}
+function CmLiveLayers(casing) {
+  var cap = ['step', ['zoom'], 'round', 16.5, 'butt'];
+  var one = function (id, filter, m) {
+    return { id: (casing ? 'asphalt-casing-live-' : 'asphalt-surface-live-') + id, type: 'line', source: 'live', minzoom: 10, filter: filter,
+      layout: { 'line-cap': cap, 'line-join': 'round' }, paint: { 'line-color': casing ? zB : RB, 'line-width': CmWz(m, casing) } };
+  };
+  return CmClasses.map(function (c) { return one(c, ['==', ['get', 'wc'], c], c / 10); })
+    .concat([one('other', ['!', ['in', ['get', 'wc'], ['literal', CmClasses]]], 4.6)]);
+}
+/* Plain (atlas) streets, one layer per kind: yellow main roads at city zoom; close up main and
+   secondary streets become grey asphalt with white edges and local streets stay white. */
+function CmAtlasLayers(casing) {
+  var kinds = [['road-main', 6, 11, '#d8bb85', '#ffe1a1', '#ffffff', '#c4c9d6'], ['road-secondary', 5, 8, '#d9d3c8', '#fffaf0', '#ffffff', '#c4c9d6'], ['road-local', 3, 4, '#d9d3c8', '#ffffff', '#dfe1e8', '#ffffff']];
+  return kinds.map(function (k) {
+    var px = function (z) { return (k[2] + (casing ? 1.2 : 0)) * Math.pow(2, z) / 61170; }, add = casing ? 1.5 : 0;
+    var w = ['interpolate', ['exponential', 2], ['zoom'], 10, 0.5 * k[1] + add, 13, k[1] + add, 16, Math.max(k[1] + add, px(16)), 18, Math.max(1.6 * k[1] + add, px(18)), 22, px(22)];
+    return { id: (casing ? 'road-casing-' : 'road-surface-') + k[0], type: 'line', source: 'atlas', 'source-layer': 'lines',
+      filter: ['all', ['==', ['get', 'kind'], k[0]], ['!', ['has', 'asphalt']], ['!', ['has', 'dup']]],
+      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      paint: { 'line-color': ['interpolate', ['linear'], ['zoom'], 15, casing ? k[3] : k[4], 16.5, casing ? k[5] : k[6]], 'line-width': w } };
+  });
 }

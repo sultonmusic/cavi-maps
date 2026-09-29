@@ -140,5 +140,22 @@ layer = s[i:j]; s = s[:i - 1] + s[j:]  # drop the preceding comma with the layer
 k = s.index(",{id:`asphalt-surface`,")
 s = s[:k] + "," + layer + s[k:]
 
+# ---------------------------------------------------------------- zoom-only road widths
+# Replace the width-by-data road layers with one layer per width class (see CmLiveLayers).
+def layer_span(src, start_id):
+    i = src.index("{id:`" + start_id + "`,")
+    depth = 0
+    for j in range(i, len(src)):
+        ch = src[j]
+        if ch == "{": depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0: return i, j + 1
+    raise SystemExit("unterminated layer " + start_id)
+for lid, spread in [("road-casing", "...CmAtlasLayers(!0)"), ("road-surface", "...CmAtlasLayers(!1)"),
+                    ("asphalt-casing-live", "...CmLiveLayers(!0)"), ("asphalt-surface-live", "...CmLiveLayers(!1)")]:
+    a, b = layer_span(s, lid)
+    s = s[:a] + spread + s[b:]
+
 open(dst, "w", encoding="utf-8").write(s)
 print("patched OK", len(s))
