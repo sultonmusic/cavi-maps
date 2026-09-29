@@ -28,7 +28,8 @@ function CmSplit(e,[t,n,r]){let i=2**t,a=([e,t])=>{let a=(n+e/4096)/i,o=(r+t/409
 function CmR(e=0){let t=[`match`,[`get`,`kind`],`road-main`,11,`road-secondary`,8,4],n=r=>[`*`,[`+`,t,e?1.2:0],2**r/61170];return[`interpolate`,[`exponential`,2],[`zoom`],...YB.filter(([e])=>e<16).flatMap(([t,n])=>{let r=[`*`,n,XB];return[t,e?[`+`,e,r]:r]}),16,[`max`,[`+`,e,XB],n(16)],18,[`max`,[`+`,e,[`*`,1.6,XB]],n(18)],22,n(22)]}
 function CmArrow(){let e=document.createElement(`canvas`);e.width=44,e.height=24;let t=e.getContext(`2d`);if(!t)return null;t.strokeStyle=`#7c8297`,t.fillStyle=`#7c8297`,t.lineWidth=3.2,t.lineCap=`round`,t.beginPath(),t.moveTo(6,12),t.lineTo(28,12),t.stroke(),t.beginPath(),t.moveTo(40,12),t.lineTo(26,4),t.lineTo(26,20),t.closePath(),t.fill();return t.getImageData(0,0,44,24)}
 """.strip().replace("\n", "")
-rep("function vH(e,t){gV();", HELPERS + "function vH(e,t){gV();")
+BUILD = open(__file__.rsplit("/", 1)[0] + "/cm_build.js", encoding="utf-8").read() if "/" in __file__ else open("cm_build.js", encoding="utf-8").read()
+rep("function vH(e,t){gV();", HELPERS + "\n" + BUILD + "\nfunction vH(e,t){gV();")
 
 # ---------------------------------------------------------------- palette
 # Yandex-like cool light-grey asphalt with white edges and white lane marks.
@@ -68,15 +69,19 @@ rep("n.on(`rotate`,r),r(),", "CmMap=n,n.on(`rotate`,r),r(),")
 # lines whose width follows the real carriageway width in metres, instead of
 # switching to hand-built polygons at z16 (those had the jagged corners).
 rep('{id:`asphalt-casing-live`,type:`line`,source:`live`,minzoom:10,layout:{"line-cap":`round`,"line-join":`round`},paint:{"line-color":zB,"line-width":ZB(!0),"line-opacity":QB}}',
-    '{id:`asphalt-casing-live`,type:`line`,source:`live`,minzoom:10,layout:{"line-cap":`round`,"line-join":`round`},paint:{"line-color":zB,"line-width":CmW(!0)}}')
+    '{id:`asphalt-casing-live`,type:`line`,source:`live`,minzoom:10,layout:{"line-cap":[`step`,[`zoom`],`round`,16.5,`butt`],"line-join":`round`},paint:{"line-color":zB,"line-width":CmW(!0)}}')
 rep('{id:`asphalt-surface-live`,type:`line`,source:`live`,minzoom:10,layout:{"line-cap":`round`,"line-join":`round`},paint:{"line-color":RB,"line-width":ZB(),"line-opacity":QB}}',
-    '{id:`asphalt-surface-live`,type:`line`,source:`live`,minzoom:10,layout:{"line-cap":`round`,"line-join":`round`},paint:{"line-color":RB,"line-width":CmW()}}')
+    '{id:`asphalt-surface-live`,type:`line`,source:`live`,minzoom:10,layout:{"line-cap":[`step`,[`zoom`],`round`,16.5,`butt`],"line-join":`round`},paint:{"line-color":RB,"line-width":CmW()}}')
 
-# One-way direction arrows, like Yandex.
+# One arrow per lane, like Yandex: straight reminders along the road and
+# turn arrows (left / straight / right, from the real junction) before its end.
+LANE_LAYOUT = ('"icon-image":[`concat`,`atlas-lane-`,[`get`,`t`]],"icon-rotation-alignment":`map`,"icon-pitch-alignment":`map`,'
+               '"icon-allow-overlap":!0,"icon-ignore-placement":!0,"icon-size":[`interpolate`,[`exponential`,2],[`zoom`],16.5,.3,18,.55,19,.95,20,1.4]')
 rep("{id:`asphalt-zebra`",
-    '{id:`asphalt-oneway`,type:`symbol`,source:`live`,minzoom:16,filter:[`==`,[`get`,`ow`],1],layout:{"symbol-placement":`line`,"symbol-spacing":110,"icon-image":`atlas-oneway`,"icon-rotation-alignment":`map`,"icon-pitch-alignment":`map`,"icon-allow-overlap":!0,"icon-ignore-placement":!0,"icon-size":[`interpolate`,[`linear`],[`zoom`],16,.65,19,1]},paint:{"icon-opacity":.9}},{id:`asphalt-zebra`')
+    '{id:`asphalt-lane-run`,type:`symbol`,source:`asphalt`,minzoom:16.5,filter:[`==`,[`get`,`kind`],`lane-run`],layout:{"symbol-placement":`line`,"symbol-spacing":220,' + LANE_LAYOUT + '},paint:{"icon-opacity":.85}},'
+    '{id:`asphalt-lane-turn`,type:`symbol`,source:`asphalt`,minzoom:16.5,filter:[`==`,[`get`,`kind`],`lane-turn`],layout:{"symbol-placement":`line-center`,' + LANE_LAYOUT + '},paint:{"icon-opacity":.95}},{id:`asphalt-zebra`')
 rep("n.on(`styleimagemissing`,e=>{if($z(n,e.id)||e.id!==GB||n.hasImage(GB))return;",
-    "n.on(`styleimagemissing`,e=>{if($z(n,e.id))return;if(e.id===`atlas-oneway`){if(!n.hasImage(e.id)){let t=CmArrow();t&&n.addImage(e.id,t,{pixelRatio:2})}return}if(e.id!==GB||n.hasImage(GB))return;")
+    "n.on(`styleimagemissing`,e=>{if($z(n,e.id))return;if(e.id.startsWith(`atlas-lane-`)){if(!n.hasImage(e.id)){let t=CmLaneIcon(e.id.slice(11));t&&n.addImage(e.id,t,{pixelRatio:2})}return}if(e.id!==GB||n.hasImage(GB))return;")
 
 OLD_F = ("function F(){let e=new Set(P.map(e=>e.id)),t=P.concat([...M.values()].filter(t=>!e.has(t.id)));"
          "h(`live`,{type:`FeatureCollection`,features:t.map(e=>D(e.coordinates,{id:e.id}))});"
@@ -88,15 +93,25 @@ OLD_F = ("function F(){let e=new Set(P.map(e=>e.id)),t=P.concat([...M.values()].
          "for(let t of Ff(e,u))s.push(D(t.coordinates,{kind:t.kind}))}),"
          "h(`asphalt`,{type:`FeatureCollection`,features:a.concat(o,s)}),k=zf(t),z(),A&&ze(A),d.invalidate()}")
 NEW_F = ("function F(){let e=new Set(P.map(e=>e.id)),t=P.concat([...M.values()].filter(t=>!e.has(t.id)));"
-         "let n=t.map(e=>Ef(e.asphalt,!!e.oneway)/2),r=e=>`${e[0].toFixed(6)},${e[1].toFixed(6)}`,i=new Map;"
-         "t.forEach((e,t)=>{for(let n of new Set(e.coordinates.map(r))){let e=i.get(n);e?e.push(t):i.set(n,[t])}});"
-         "let a=t.map(e=>CmS(e.coordinates,e=>(i.get(r(e))?.length??0)>1));"
-         "h(`live`,{type:`FeatureCollection`,features:t.map((e,t)=>D(a[t],{id:e.id,w:n[t]*2,ow:e.oneway?1:0}))});"
-         "let s=[];t.forEach((e,t)=>{let u=e=>(i.get(r(e))??[]).reduce((e,r)=>r===t?e:Math.max(e,n[r]),0);"
-         "for(let o of Ff({...e,coordinates:a[t]},u))s.push(D(o.coordinates,{kind:o.kind}))}),"
-         "h(`asphalt`,{type:`FeatureCollection`,features:s}),k=zf(t),z(),A&&ze(A),d.invalidate()}")
+         "let n=CmBuild(t,Ff);h(`live`,{type:`FeatureCollection`,features:n.live}),"
+         "h(`asphalt`,{type:`FeatureCollection`,features:n.asphalt}),k=zf(t),z(),A&&ze(A),d.invalidate()}")
 rep(OLD_F, NEW_F)
 rep("k=zf(t),z(),A&&ze(A)", "k=zf(t),CmK=k,clearTimeout(CmT),CmT=setTimeout(()=>{try{CmMap?.style?._reloadSource(`atlas`)}catch{}},300),z(),A&&ze(A)")
+
+# ---------------------------------------------------------------- navigator lane advice
+rep("let r=Cf(n.asphalt,!!n.oneway),i=Ef(n.asphalt,!!n.oneway)/2;for(let n=1;n<e.length;n++){let a=e[n-1],o=e[n],s={a,b:o,shift:r,half:i};", "let r=Cf(n.asphalt,!!n.oneway),i=Ef(n.asphalt,!!n.oneway)/2,cmL=Math.max(1,n.asphalt|0);for(let n=1;n<e.length;n++){let a=e[n-1],o=e[n],s={a,b:o,shift:r,half:i,lanes:cmL};")
+rep("return c&&{shift:c.shift,half:c.half}}", "return c&&{shift:c.shift,half:c.half,lanes:c.lanes}}")
+rep("buildingDetailStats:d.stats}", "buildingDetailStats:d.stats,laneAt:(e,t,r)=>Bf(k,e,t,r,12)?.lanes??0}")
+rep("let o=yf(a,r.route.path,r.maneuvers,$e.current);if(!o.valid)return;",
+    "let o=yf(a,r.route.path,r.maneuvers,$e.current);if(!o.valid)return;o.cmLanes=i?.laneAt?.(o.point[1],o.point[0],hf(r.route.path,o.progressMeters)?.heading??t.heading)??0,o.cmTip=o.arrived?``:CmLaneTip(o.nextManeuver?.kind,o.cmLanes,r.mode,o.metersToManeuver);")
+rep("r.voiceOn&&op(e.text))}", "r.voiceOn&&op(e.text+(e.stage<3&&o.cmTip?`. ${o.cmTip}`:``)))}")
+LANE_STRIP = ("le!==`arrived`&&he?.cmTip&&(0,U.jsxs)(`div`,{style:{display:`flex`,flexWrap:`wrap`,alignItems:`center`,gap:`3px`,marginTop:`6px`},children:["
+              "...Array.from({length:Math.min(he.cmLanes,6)},(e,t)=>{let n=he.nextManeuver?.kind===`right`?t===Math.min(he.cmLanes,6)-1:t===0;"
+              "return(0,U.jsx)(`span`,{style:{width:`22px`,height:`24px`,borderRadius:`5px`,display:`inline-flex`,alignItems:`center`,justifyContent:`center`,fontSize:`15px`,fontWeight:700,"
+              "background:n?`#1a73e8`:`#e7e9ef`,color:n?`#fff`:`#8a90a2`},children:n?he.nextManeuver?.kind===`right`?`↱`:`↰`:`↑`},t)}),"
+              "(0,U.jsx)(`span`,{style:{flexBasis:`100%`,fontSize:`13px`,fontWeight:600,color:`#1a73e8`},children:he.cmTip})]})")
+rep("he?.instruction||(le===`acquiring`?`Определяем местоположение`:`Двигайтесь прямо`)})]})",
+    "he?.instruction||(le===`acquiring`?`Определяем местоположение`:`Двигайтесь прямо`)})," + LANE_STRIP + "]})")
 
 # ---------------------------------------------------------------- road labels
 # Labels come one per OSM way, so a street split into 20 ways was printed up
