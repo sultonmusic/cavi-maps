@@ -6,13 +6,17 @@
  *
  * Text is drawn on a canvas above the map rather than through MapLibre symbol
  * layers: that keeps the original typography and needs no glyph server, which
- * an offline-first map cannot rely on. */
+ * an offline-first map cannot rely on. Place pictograms are an icons-only symbol
+ * layer whose images are drawn in the browser on demand (lib/poi-draw.ts), so
+ * they need neither glyphs nor a sprite sheet. */
 import { siteUrl } from './site-url'
 import { Map as GLMap, Marker, LngLatBounds, MercatorCoordinate, ScaleControl, addProtocol, type CustomLayerInterface, type GeoJSONSource, type MapMouseEvent, type RequestParameters, type StyleSpecification } from 'maplibre-gl'
 import { encodeTile, type MvtFeature, type MvtLayer } from './mvt'
 import { houseGroupOf, housesInTile, indexHouses, type HouseIndex } from './country-houses.mjs'
 import { ASPHALT_STOPS, carriagewayMetres, laneAt, laneLines, lanePieces, laneSegments, offsetLine, ribbon, streetAt, streetCrossings, zebra, type LaneSpot } from './lanes.mjs'
 import { keepRight, type Mode } from './travel.mjs'
+import { POI_COLOURS, POI_IMAGE_PREFIX, POI_MINZOOM, POI_RANK_FILTER, poiIconSizeExpression, poiLabelOffset } from './poi-icons.mjs'
+import { addPoiImage, poiIconBoxes, poiPlacement } from './poi-draw'
 
 type Bundle = Record<string, RawFeature[]>
 type RawFeature = [string, number, number[][][], { style?: string; way?: number; offsets?: number[] }?]
@@ -23,9 +27,10 @@ export type BuildingData = {
   origin: [number, number]; scale: number; buildings: number[][]
   streets?: string[]; street?: number[]; number?: number[]
 }
-export type AtlasLabel = { lon: number; lat: number; name: string; kind: string; minzoom: number; maxzoom: number | null; owner?: string; offset?: number }
+export type AtlasLabel = { lon: number; lat: number; name: string; kind: string; minzoom: number; maxzoom: number | null; owner?: string; offset?: number; priority?: number }
 export type LabelHit = { name: string; kind: string; owner?: string; lat: number; lon: number }
-export type MapPoint = { id: string; lat: number; lon: number; name: string; category: string }
+/** A place on the map: `icon` is a pictogram name from lib/poi-icons.mjs, `rank` 0 (always shown) to 4 (only close in). */
+export type MapPoint = { id: string; lat: number; lon: number; name: string; category: string; icon?: string; rank?: number }
 export type RouteLines = {
   variants: number[][][]; active: number; remaining: number[][] | null; running: boolean
   connector?: number[][] | null
@@ -272,7 +277,6 @@ function registerProtocol() {
   })
 }
 
-const POINT_COLOURS = ['match', ['get', 'category'], 'food', '#ee8734', '#08866a']
 const LABEL_RANK: Record<string, number> = { country: 0, city: 1, town: 2, village: 3, hamlet: 4, neighbourhood: 5, district: 5, place: 6, road: 7, house: 8 }
 
 type Vec3 = [number, number, number]
@@ -1097,9 +1101,17 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
         },
       },
       {
-        // Far out, place dots would out-number and out-click the town names.
-        id: 'points', type: 'circle', source: 'points', minzoom: 11,
-        paint: { 'circle-radius': 6, 'circle-color': POINT_COLOURS as never, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 },
+        // Places: grey discs with a white pictogram, drawn on demand by styleimagemissing. Far out
+        // only the important ones show; where discs crowd, the lower rank keeps its place.
+        id: 'points', type: 'symbol', source: 'points', minzoom: POI_MINZOOM, filter: POI_RANK_FILTER as never,
+        layout: {
+          'icon-image': ['get', 'icon'] as never, 'icon-size': poiIconSizeExpression() as never, 'icon-anchor': 'center',
+          'icon-allow-overlap': false, 'icon-ignore-placement': false, 'icon-padding': 1,
+          'symbol-sort-key': ['get', 'rank'] as never, 'symbol-z-order': 'auto',
+          'icon-pitch-alignment': 'viewport', 'icon-rotation-alignment': 'viewport',
+        },
+        // The place under the destination pin keeps its room but hands its look to the pin.
+        paint: { 'icon-opacity': ['case', ['boolean', ['get', 'focus'], false], 0, 1] as never },
       },
     ],
   }
@@ -1123,8 +1135,9 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
   map.touchZoomRotate.enable({ around: 'center' })
   map.touchPitch.enable()
   map.on('error', event => { onError?.(event.error?.message || 'Не удалось отрисовать карту') })
-  // The paving pattern is drawn here rather than shipped in a sprite the offline map would need.
+  // The paving pattern and the place discs are drawn here rather than shipped in a sprite the offline map would need.
   map.on('styleimagemissing', event => {
+    if (addPoiImage(map, event.id)) return
     if (event.id !== PAVING || map.hasImage(PAVING)) return
     const image = pavingImage()
     if (image) map.addImage(PAVING, image, { pixelRatio: 2 })
@@ -1150,7 +1163,9 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
     // Roofs and flagpoles first, so the arrow stays the last thing drawn.
     for (const custom of [meshes.layer, arrow.layer]) {
       if (map.getLayer(custom.id)) continue
-      try { map.addLayer(custom) } catch { /* the style is still being parsed */ }
+      // 3D meshes go under the place discs; the arrow stays on top of everything.
+      const before = custom !== arrow.layer && map.getLayer('points') ? 'points' : undefined
+      try { map.addLayer(custom, before) } catch { /* the style is still being parsed */ }
     }
     for (const [id, data] of [...waiting]) {
       const target = map.getSource(id) as GeoJSONSource | undefined
@@ -1178,6 +1193,8 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
   let houseLabels: AtlasLabel[] = []
   let placeLabels: AtlasLabel[] = []
   let boxes: { box: number[]; label: AtlasLabel }[] = []
+  // Place names follow the discs MapLibre kept: a disc hidden by collision takes its name with it.
+  const placed = poiPlacement(map, 'points')
 
   function drawLabels() {
     const size = map.getCanvas().getBoundingClientRect()
@@ -1193,30 +1210,41 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.clearRect(0, 0, size.width, size.height)
     const zoom = map.getZoom()
+    placed.refresh()
     const bounds = map.getBounds()
     const west = bounds.getWest(), east = bounds.getEast(), south = bounds.getSouth(), north = bounds.getNorth()
     // With the camera tilted, everything above the horizon is distant clutter.
     const floor = map.getPitch() > 25 ? size.height * (map.getPitch() - 25) / 90 : 0
     const occupied: number[][] = []
     boxes = []
+    // Every disc on screen keeps lesser labels off it; a place is named only while its disc shows.
+    const iconBoxes = poiIconBoxes(map, placeLabels, placed, zoom, size)
+    let iconsBlocked = false
     const candidates = labels
-      .concat(zoom >= 15 ? placeLabels : [])
+      .concat(zoom >= 15 ? placeLabels.filter(label => placed.has(label.owner)) : [])
       .concat(zoom >= 16 ? stopLabels : [])
       .concat(zoom >= 17 ? houseLabels : [])
-    const ordered = candidates.slice().sort((a, b) => (LABEL_RANK[a.kind] ?? 9) - (LABEL_RANK[b.kind] ?? 9))
+    const ordered = candidates.slice().sort((a, b) => (LABEL_RANK[a.kind] ?? 9) - (LABEL_RANK[b.kind] ?? 9) || (a.priority ?? 0) - (b.priority ?? 0))
     for (const label of ordered) {
+      // Country, city, town and neighbourhood names stay above the discs; the rest give way to them.
+      if (!iconsBlocked && (LABEL_RANK[label.kind] ?? 9) >= LABEL_RANK.place) {
+        for (const box of iconBoxes) occupied.push(box)
+        iconsBlocked = true
+      }
       if (zoom < label.minzoom || (label.maxzoom !== null && zoom > label.maxzoom)) continue
       if (label.kind === 'road' && zoom < 14) continue
       if (label.kind === 'country' && zoom > 9) continue
       if (label.lon < west || label.lon > east || label.lat < south || label.lat > north) continue
       const point = map.project([label.lon, label.lat])
       if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) continue
-      point.y += label.offset ?? 0
+      point.y += label.kind === 'place' ? poiLabelOffset(zoom) : label.offset ?? 0
       if (point.x < 25 || point.y < floor + 12 || point.x > size.width - 25 || point.y > size.height - 12) continue
       const font = label.kind === 'country' ? 20 : label.kind === 'city' ? (zoom < 10 ? 16 : 19)
         : label.kind === 'town' ? 15 : label.kind === 'house' ? 11 : label.kind === 'road' ? 12 : 13
       ctx.font = `${label.kind === 'road' || label.kind === 'house' ? '400' : '600'} ${font}px Arial`
-      const width = ctx.measureText(label.name).width + 12, height = font + 8
+      // A long place name is cut short; its box starts at the text, so its own disc never blocks it.
+      const caption = label.kind === 'place' && label.name.length > 28 ? label.name.slice(0, 27).trimEnd() + '…' : label.name
+      const width = ctx.measureText(caption).width + 12, height = font + (label.kind === 'place' ? 2 : 8)
       const box = [point.x - width / 2, point.y - height / 2, point.x + width / 2, point.y + height / 2]
       if (occupied.some(other => other[0] < box[2] && other[2] > box[0] && other[1] < box[3] && other[3] > box[1])) continue
       occupied.push(box)
@@ -1225,13 +1253,16 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       ctx.textBaseline = 'middle'
       ctx.lineWidth = 3.5
       ctx.strokeStyle = '#ffffffeb'
-      ctx.strokeText(label.name, point.x, point.y)
+      ctx.strokeText(caption, point.x, point.y)
       ctx.fillStyle = label.kind === 'house' ? '#94836a' : label.kind === 'road' ? '#7a7467'
-        : label.kind === 'place' ? '#37604e' : '#4e6254'
-      ctx.fillText(label.name, point.x, point.y)
+        : label.kind === 'place' ? POI_COLOURS.label : '#4e6254'
+      ctx.fillText(caption, point.x, point.y)
     }
   }
   map.on('render', drawLabels)
+  // Discs settle after the last frame of a move: name exactly the ones that stayed.
+  // (drawLabels directly: a repaint here would only bring another idle.)
+  map.on('idle', () => { if (placed.refresh(true)) drawLabels() })
 
   /** The label sits on top of whatever it names, so the label wins the tap. */
   function labelAt(x: number, y: number, pad = 7): LabelHit | null {
@@ -1612,19 +1643,34 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
 
   function setLabels(next: AtlasLabel[]) { labels = next; map.triggerRepaint() }
 
+  let lastPoints: MapPoint[] = [], focusId: string | null = null
   function setPoints(points: MapPoint[]) {
+    lastPoints = points
+    // The focused place (under the destination pin) goes first, for its disc's room and its name.
+    const rankOf = (point: MapPoint) => point.id === focusId ? -1 : point.rank ?? 3
     placeLabels = points.map(point => ({
       lon: point.lon, lat: point.lat, name: point.name, kind: 'place',
-      minzoom: 15, maxzoom: null, owner: point.id, offset: 15,
+      minzoom: 15, maxzoom: null, owner: point.id, priority: rankOf(point),
     }))
     push('points', {
       type: 'FeatureCollection',
       features: points.map(point => ({
         type: 'Feature' as const,
-        properties: { id: point.id, name: point.name, category: point.category },
+        properties: {
+          id: point.id, name: point.name, category: point.category,
+          icon: POI_IMAGE_PREFIX + (point.icon || 'map-pin'), rank: rankOf(point), focus: point.id === focusId,
+        },
         geometry: { type: 'Point' as const, coordinates: [point.lon, point.lat] },
       })),
     })
+    placed.stale()
+  }
+
+  /** The place under the destination pin: its disc turns invisible but keeps its room, and its name goes first. */
+  function setPointFocus(id: string | null) {
+    if (id === focusId) return
+    focusId = id
+    setPoints(lastPoints)
   }
 
   function setSelection(geometry: SelectionGeometry | null) {
@@ -1748,7 +1794,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
 
   return {
     map, ready, labelAt, pick, houseAt, houseRing, fit, reveal, marker, destroy, setDrivingView,
-    setLabels, setPoints, setSelection, setRoutes, setLiveRoads, setBuildings, setOsmBuildings, setBuildingInfo, setAdminBuildings, setCityObjects,
+    setLabels, setPoints, setPointFocus, setSelection, setRoutes, setLiveRoads, setBuildings, setOsmBuildings, setBuildingInfo, setAdminBuildings, setCityObjects,
     setEditorShapes, vertex, setLocationArrow, setTravelMode,
   }
 }

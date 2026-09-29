@@ -9,6 +9,8 @@ import RoutePlanner from '@/components/route-planner';
 import {useLiveMap} from '@/lib/live-store';
 import {createAtlasGL, composeLabels, baseLabels, type AtlasGL, type AtlasLabel, type BuildingData, type SelectionGeometry} from '@/lib/atlas-gl';
 import {isLanes,isOneway} from '@/lib/lanes.mjs';
+import {poiNearby,poiStyle} from '@/lib/poi-icons.mjs';
+import {poiPinSvg} from '@/lib/poi-draw';
 import type {Marker} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import BusinessDetails,{businessPlace} from '@/components/business-details';
@@ -116,8 +118,10 @@ useEffect(()=>{const instance=atlas.current;if(!ready||!instance)return;
  instance.map.on('click',handler);
  return()=>{instance.map.off('click',handler);surface.removeEventListener('pointerdown',collapse)}},[ready]);
 useEffect(()=>{destinationMarker.current?.remove();destinationMarker.current=null;
+ // The place's own disc steps aside under the pin, and the pin carries its pictogram instead.
+ atlas.current?.setPointFocus(destination?.id??null);
  const instance=atlas.current;if(!ready||!instance||!destination)return;
- const pin=instance.marker('<svg class="selection-pin" viewBox="0 0 40 50" aria-hidden="true"><path d="M20 2C9 2 2 10 2 20c0 10 7 16 12 18l6 10 6-10c5-2 12-8 12-18C38 10 31 2 20 2Z" fill="#087fe9" stroke="white" stroke-width="3"/></svg>','route-pin-wrap');
+ const pin=instance.marker(poiPinSvg(poiStyle(destination.id,destination.tags).icon),'route-pin-wrap');
  pin.setLngLat([destination.lon,destination.lat]).addTo(instance.map);
  pin.getElement().addEventListener('click',()=>pointHandler.current(destination));
  destinationMarker.current=pin},[destination,ready]);
@@ -172,13 +176,13 @@ function toggle3d(){const map=atlas.current?.map;if(!map)return;const flat=map.g
  map.easeTo({pitch:flat?60:0,zoom:flat?Math.max(map.getZoom(),17):map.getZoom(),duration:600})}
 function chooseCity(name:string){const value=cities[name];if(!value)return;setViewCity(name);
  atlas.current?.map.jumpTo({center:[value[1],value[0]],zoom:value[2],bearing:0,pitch:0})}
-// Only the places around what is on screen get a dot and a name.
-const nearbyPoints=useMemo(()=>{
- const [lon,lat]=centre,cos=Math.cos(lat*Math.PI/180);
- return results.map(p=>({p,gap:Math.hypot(p.lat-lat,(p.lon-lon)*cos)})).sort((a,b)=>a.gap-b.gap).slice(0,300).map(item=>item.p);
-},[results,centre]);
+// Only the places around what is on screen get a disc and a name: the 300 nearest, and the nearest
+// hundred important ones beyond them, so a zoomed-out view is not empty past the nearest cluster.
+const nearbyPoints=useMemo(()=>poiNearby(results,centre[0],centre[1]),[results,centre]);
 useEffect(()=>{setLimit(60);pointIndex.current=new Map(results.map(p=>[p.id,p]));
- atlas.current?.setPoints(nearbyPoints.map(p=>({id:p.id,lat:p.lat,lon:p.lon,name:name(p),category:category(p)})))},[results,nearbyPoints,ready]);
+ // Browsing, far-out zooms keep to the important places; a search, a chip or the saved list shows every match.
+ const searching=!!query.trim()||cat!=='all'||onlySaved;
+ atlas.current?.setPoints(nearbyPoints.map(p=>{const style=poiStyle(p.id,p.tags);return {id:p.id,lat:p.lat,lon:p.lon,name:name(p),category:category(p),icon:style.icon,rank:searching?0:style.rank}}))},[results,nearbyPoints,ready,query,cat,onlySaved]);
 function sheetOffset(state:Sheet,height:number){return state==='full'?0:state==='half'?height*0.46:Math.max(0,height-128)}
 function gripDown(event:React.PointerEvent<HTMLButtonElement>){
  const element=sheetNode.current;if(!element)return;
