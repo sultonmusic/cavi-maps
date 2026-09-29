@@ -34,7 +34,9 @@ rep("function vH(e,t){gV();", HELPERS + "\n" + BUILD + "\nfunction vH(e,t){gV();
 # ---------------------------------------------------------------- palette
 # Yandex-like cool light-grey asphalt with white edges and white lane marks.
 rep("RB=`#a9abad`,zB=`#ddd9ce`,BB=`#f3f3ef`", "RB=`#c4c9d6`,zB=`#ffffff`,BB=`#ffffff`")
-rep("`#b4b7ba`", "`#cdd1dc`", count=2)
+# Paved pedestrian areas (squares, wide sidewalks with an asphalt surface) must not read as road:
+# a light pavement grey, as Yandex draws them, instead of the carriageway colour.
+rep("`#b4b7ba`", "`#e4e5e9`", count=2)
 
 # Plain (non-asphalt) roads: keep yellow main roads at city zoom; close up,
 # main/secondary streets turn into the same grey asphalt with white edges as
@@ -78,7 +80,7 @@ rep('{id:`asphalt-surface-live`,type:`line`,source:`live`,minzoom:10,layout:{"li
 LANE_LAYOUT = ('"icon-image":[`concat`,`atlas-lane-`,[`get`,`t`]],"icon-rotation-alignment":`map`,"icon-pitch-alignment":`map`,'
                '"icon-allow-overlap":!0,"icon-ignore-placement":!0,"icon-size":[`interpolate`,[`exponential`,2],[`zoom`],16.5,.3,18,.55,19,.95,20,1.4]')
 rep("{id:`asphalt-zebra`",
-    '{id:`asphalt-lane-run`,type:`symbol`,source:`asphalt`,minzoom:16.5,filter:[`==`,[`get`,`kind`],`lane-run`],layout:{"symbol-placement":`line`,"symbol-spacing":220,' + LANE_LAYOUT + '},paint:{"icon-opacity":.85}},'
+    '{id:`asphalt-lane-run`,type:`symbol`,source:`asphalt`,minzoom:16.5,filter:[`==`,[`get`,`kind`],`lane-run`],layout:{"symbol-placement":`line`,"symbol-spacing":340,' + LANE_LAYOUT + '},paint:{"icon-opacity":.85}},'
     '{id:`asphalt-lane-turn`,type:`symbol`,source:`asphalt`,minzoom:16.5,filter:[`==`,[`get`,`kind`],`lane-turn`],layout:{"symbol-placement":`line-center`,' + LANE_LAYOUT + '},paint:{"icon-opacity":.95}},{id:`asphalt-zebra`')
 rep("n.on(`styleimagemissing`,e=>{if($z(n,e.id)||e.id!==GB||n.hasImage(GB))return;",
     "n.on(`styleimagemissing`,e=>{if($z(n,e.id))return;if(e.id.startsWith(`atlas-lane-`)){if(!n.hasImage(e.id)){let t=CmLaneIcon(e.id.slice(11));t&&n.addImage(e.id,t,{pixelRatio:2})}return}if(e.id!==GB||n.hasImage(GB))return;")
@@ -128,6 +130,15 @@ rep("let h=t.kind===`place`&&t.name.length>28?t.name.slice(0,27).trimEnd()+`…`
     "r.save(),r.translate(a.x,a.y),r.rotate(cmQ),r.textAlign=`center`,r.textBaseline=`middle`,r.lineJoin=`round`,r.lineWidth=3.5,r.strokeStyle=`#ffffffeb`,r.strokeText(h,0,0),"
     "r.fillStyle=t.kind===`house`?`#94836a`:t.kind===`road`?`#565b69`:t.kind===`place`?yz.label:`#4e6254`,r.fillText(h,0,0),r.restore())")
 rep("kind:`road`,minzoom:16,maxzoom:20,owner:e}", "kind:`road`,minzoom:16,maxzoom:20,owner:e,line:t.coordinates}")
+
+# ---------------------------------------------------------------- one outline under all roads
+# Every road casing (outline) is drawn before every road surface, so where an atlas street meets
+# the asphalt, or ramps fork, the grey surfaces join seamlessly with one white outline around
+# them, instead of white casing lines drawn across the other road.
+i = s.index("{id:`road-surface`,"); j = s.index(",{id:`asphalt-casing`,", i)
+layer = s[i:j]; s = s[:i - 1] + s[j:]  # drop the preceding comma with the layer
+k = s.index(",{id:`asphalt-surface`,")
+s = s[:k] + "," + layer + s[k:]
 
 open(dst, "w", encoding="utf-8").write(s)
 print("patched OK", len(s))

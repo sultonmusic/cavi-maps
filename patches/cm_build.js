@@ -100,14 +100,24 @@ function CmBuild(roads, dashes) {
     (inn.get(k) || []).forEach(function (q) { if (q[0] !== self) h.push(q[0].w / 2); });
     return h;
   };
-  /* 3. which manoeuvres are possible at the end of each road, per travel direction */
+  /* forks: every road at the node leaves into one narrow cone (ramps splitting off a street) */
+  var cone = Math.cos(40 * Math.PI / 180), fork = new Set();
+  ends.forEach(function (a, k) {
+    if (a.length < 2 || inn.has(k)) return;
+    var ds = a.map(function (q) { return CmLeave(q[0].c, q[1], 15); });
+    var m = CmUnit(ds.reduce(function (s, d) { return [s[0] + d[0], s[1] + d[1]]; }, [0, 0]));
+    if ((m[0] || m[1]) && ds.every(function (d) { return d[0] * m[0] + d[1] * m[1] >= cone; })) fork.add(k);
+  });
+  /* 3. which manoeuvres are possible at the end of each road, per travel direction
+     (at a fork the only way on is the street the ramps join, so the arrows stay straight) */
   var turnsAt = function (x, e) {
     var k = e ? x.k1 : x.k0, h = CmLeave(x.c, e), S = new Set();
+    if (fork.has(k)) return S;
     h = [-h[0], -h[1]];
     var add = function (d) {
       if (!d[0] && !d[1]) return;
       var t = -Math.atan2(h[0] * d[1] - h[1] * d[0], h[0] * d[0] + h[1] * d[1]) * 180 / Math.PI;
-      if (Math.abs(t) < 35) S.add('s'); else if (t >= 35 && t <= 150) S.add('r'); else if (t <= -35 && t >= -150) S.add('l');
+      if (Math.abs(t) < 35) S.add('s'); else if (t >= 35 && t <= 130) S.add('r'); else if (t <= -35 && t >= -130) S.add('l');
     };
     (ends.get(k) || []).forEach(function (q) { if ((q[0] === x && q[1] === e) || (q[0].ow && q[1] !== 0)) return; add(CmLeave(q[0].c, q[1])); });
     (inn.get(k) || []).forEach(function (q) { add(CmLeave(q[0].c.slice(q[1]), 0)); if (!q[0].ow) add(CmLeave(q[0].c.slice(0, q[1] + 1), 1)); });
@@ -118,14 +128,14 @@ function CmBuild(roads, dashes) {
   /* 4a. forks: roads leaving one node side by side start next to each other across the road width */
   var fanned = new Set();
   ends.forEach(function (a, k) {
-    if (a.length < 2 || inn.has(k)) return;
+    if (!fork.has(k)) return;
     var o = node.get(k), ds = a.map(function (q) { return CmLeave(q[0].c, q[1], 15); });
     var m = CmUnit(ds.reduce(function (s, d) { return [s[0] + d[0], s[1] + d[1]]; }, [0, 0]));
-    if ((!m[0] && !m[1]) || ds.some(function (d) { return d[0] * m[0] + d[1] * m[1] < Math.cos(40 * Math.PI / 180); })) return;
     var nr = [m[1], -m[0]];
     var items = a.map(function (q, i) { return { x: q[0], e: q[1], s: ds[i][0] * nr[0] + ds[i][1] * nr[1] }; }).sort(function (p, q) { return p.s - q.s; });
     var tot = items.reduce(function (s, p) { return s + p.x.w; }, 0);
-    var span = Math.max(Math.max.apply(null, items.map(function (p) { return p.x.w; })), tot * 0.75), sc = span / tot, cum = -span / 2;
+    /* branches emerge from within the width of the road they leave (about two lanes), then spread */
+    var span = Math.max(Math.max.apply(null, items.map(function (p) { return p.x.w; })), Math.min(tot, 8.5)), sc = span / tot, cum = -span / 2;
     items.forEach(function (p) {
       var off = cum + p.x.w * sc / 2; cum += p.x.w * sc;
       p.x.c[p.e ? p.x.c.length - 1 : 0] = CmFromM(o, [nr[0] * off, nr[1] * off]);
@@ -157,14 +167,17 @@ function CmBuild(roads, dashes) {
     var o = node.get(k);
     var hs = a.map(function (q) { return q[0].w / 2; }).concat((inn.get(k) || []).map(function (q) { return q[0].w / 2; })).sort(function (p, q) { return q - p; });
     if (hs.length >= 2) surf.push(F('Polygon', { kind: 'surface' }, [CmDisc(o, hs[1])]));
-    /* width change where one road simply continues as a narrower one: taper over ~25 m */
-    if (a.length === 2 && !inn.has(k) && a[0][0].w !== a[1][0].w) {
-      var W = a[0][0].w > a[1][0].w ? a[0] : a[1], Nq = W === a[0] ? a[1] : a[0], n = Nq[0];
+    /* width change where a road simply continues as a narrower one (other roads may meet there too): taper over ~25 m */
+    for (var i = 0; i < a.length; i++) for (var j = i + 1; j < a.length; j++) {
+      var A = a[i], B = a[j];
+      if (A[0] === B[0] || A[0].w === B[0].w || A[0].ow !== B[0].ow || (A[0].ow && A[1] === B[1])) continue;
+      var dA = CmLeave(A[0].c, A[1]), dB = CmLeave(B[0].c, B[1]);
+      if (dA[0] * dB[0] + dA[1] * dB[1] > -0.85) continue;
+      var W = A[0].w > B[0].w ? A : B, Nq = W === A ? B : A, n = Nq[0];
       var L = Math.min(25, CmLen(n.c) * 0.5), line = Nq[1] ? n.c.slice().reverse() : n.c, seg = CmSub(line, 0, L);
-      if (seg.length > 1) {
-        var P = seg[seg.length - 1], d = CmUnit(CmToM(o, P)), nr = [d[1], -d[0]], wa = W[0].w / 2, wb = n.w / 2;
-        surf.push(F('Polygon', { kind: 'surface' }, [[CmFromM(o, [nr[0] * wa, nr[1] * wa]), CmFromM(P, [nr[0] * wb, nr[1] * wb]), CmFromM(P, [-nr[0] * wb, -nr[1] * wb]), CmFromM(o, [-nr[0] * wa, -nr[1] * wa]), CmFromM(o, [nr[0] * wa, nr[1] * wa])]]));
-      }
+      if (seg.length < 2) continue;
+      var P = seg[seg.length - 1], d = CmUnit(CmToM(o, P)), nr = [d[1], -d[0]], wa = W[0].w / 2, wb = n.w / 2;
+      surf.push(F('Polygon', { kind: 'surface' }, [[CmFromM(o, [nr[0] * wa, nr[1] * wa]), CmFromM(P, [nr[0] * wb, nr[1] * wb]), CmFromM(P, [-nr[0] * wb, -nr[1] * wb]), CmFromM(o, [-nr[0] * wa, -nr[1] * wa]), CmFromM(o, [nr[0] * wa, nr[1] * wa])]]));
     }
   });
   /* 5. smooth, then emit surfaces, lane dashes and one arrow per lane */
