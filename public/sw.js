@@ -1,5 +1,5 @@
 /* Cavi Maps offline cache: app shell, map data and saved routes. No analytics, external requests, or background GPS. */
-const CACHE_NAME = 'atlas-20261001-api1';
+const CACHE_NAME = 'atlas-20261001-firebase-shell1';
 const inFlight = new Map();
 // The site root: '/' on Firebase, '/cavi-maps/' on GitHub Pages. Paths below are written from that root.
 const ROOT = new URL('./', self.location.href).pathname;

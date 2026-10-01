@@ -1,0 +1,12 @@
+import {mkdir,readFile,writeFile,copyFile} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const source=process.env.MAPS_SOURCE_URL||'https://sultonmusic.github.io/cavi-maps/';
+const url=new URL(source);
+if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||!url.pathname.endsWith('/'))throw Error('MAPS_SOURCE_URL must be an HTTPS site root ending in /');
+const out=path.join(root,'firebase-shell-dist');await mkdir(out,{recursive:true});
+await copyFile(path.join(root,'hosting/firebase-shell/index.html'),path.join(out,'index.html'));
+const template=await readFile(path.join(root,'hosting/firebase-shell/shell.js'),'utf8');
+await writeFile(path.join(out,'shell.js'),template.replace('__MAPS_SOURCE_URL__',JSON.stringify(url.href).replace(/</g,'\\u003c')));
+console.log(`Firebase shell built: ${out}; map source: ${url.href}`);

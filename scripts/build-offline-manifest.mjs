@@ -35,7 +35,7 @@ let bytes=0;
 for(const url of urls){const size=await sizeOf(fileOf(url));if(size===null)throw Error(`Missing core file ${url} in ${root}`);bytes+=size}
 let dataDate=null;
 try{dataDate=JSON.parse(await readFile(fileOf('/atlas-data/index.json'),'utf8')).date??null}catch{}
-const manifest={version:'20261001-api1',dataDate,builtAt:new Date().toISOString().slice(0,10),bytes,urls};
+const manifest={version:'20261001-firebase-shell1',dataDate,builtAt:new Date().toISOString().slice(0,10),bytes,urls};
 await writeFile(path.join(root,'offline-manifest.json'),JSON.stringify(manifest));
 
 // Sizes of the files a person can save for a city or for the whole routing graph (lib/offline-maps.ts).

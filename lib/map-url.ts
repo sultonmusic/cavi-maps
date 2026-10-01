@@ -9,6 +9,7 @@ export function readMapUrl(path = location.pathname) {
   return {center: [lon, lat] as [number, number], zoom: Math.max(4, Math.min(20, Number.isFinite(z) ? z : 16))};
 }
 const citySlug: Record<string, string> = {'Душанбе':'Dushanbe','Худжанд':'Khujand','Шайдон':'Shaydon','Таджикистан':'Tajikistan'};
+export const mapCitySlug = (city: string) => citySlug[city] || city;
 export function mapPath(lat: number, lon: number, city: string) {
-  return siteUrl(`/Capline-Group/Maps/Tajikistan/${encodeURIComponent(citySlug[city] || city)}/${lat.toFixed(6)},${lon.toFixed(6)}`);
+  return siteUrl(`/Capline-Group/Maps/Tajikistan/${encodeURIComponent(mapCitySlug(city))}/${lat.toFixed(6)},${lon.toFixed(6)}`);
 }

@@ -153,6 +153,7 @@ export default function Admin() {
   const [baseDistricts,setBaseDistricts] = useState<District[]>([]);
   const [buildingData,setBuildingData] = useState<BuildingData|null>(null);
   const [mapReady,setMapReady] = useState(false);
+  useEffect(()=>{const origin=new URLSearchParams(location.search).get('parentOrigin');if(origin&&window.parent!==window)window.parent.postMessage({type:'cavi:ready'},origin)},[]);
   const [selection,setSelection] = useState<Selection>(null);
   const [editName,setEditName] = useState('');
   const [asphalt,setAsphalt] = useState('original');

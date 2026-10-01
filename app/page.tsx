@@ -1,4 +1,4 @@
-import {readMapUrl, mapPath} from '../lib/map-url';
+import {readMapUrl, mapPath, mapCitySlug} from '../lib/map-url';
 'use client';
 import {siteUrl} from '@/lib/site-url';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
@@ -92,7 +92,7 @@ if(node.current){atlas.current=createAtlasGL(node.current,setError);atlas.curren
  setReady(true);atlas.current.ready.catch(()=>{if(!cancelled)setError('Не удалось загрузить карту. Обновите страницу.')})}
 return()=>{cancelled=true;destinationMarker.current?.remove();locationMarker.current?.remove();atlas.current?.destroy();atlas.current=null}},[]);
 useEffect(()=>{const restore=()=>{const shared=readMapUrl();if(shared)atlas.current?.map.jumpTo(shared)};window.addEventListener('popstate',restore);return()=>window.removeEventListener('popstate',restore)},[]);
-useEffect(()=>{const parentOrigin=new URLSearchParams(location.search).get('parentOrigin');if(!parentOrigin||window.parent===window)return;
+useEffect(()=>{const parentOrigin=new URLSearchParams(location.search).get('parentOrigin');if(!ready||!parentOrigin||window.parent===window)return;
  const receive=(event:MessageEvent)=>{if(event.source!==window.parent||event.origin!==parentOrigin||event.data?.type!=='cavi:route')return;
  const coordinates=event.data.coordinates;if(!Array.isArray(coordinates)||coordinates.length<2||coordinates.length>50000||coordinates.some(p=>!Array.isArray(p)||p.length!==2||!p.every(Number.isFinite)||p[0]<66||p[0]>76.5||p[1]<35.5||p[1]>42))return;
  const instance=atlas.current;if(!instance)return;instance.ready.then(()=>{if(atlas.current!==instance)return;const map=instance.map,data={type:'Feature' as const,properties:{},geometry:{type:'LineString' as const,coordinates}};
@@ -193,6 +193,7 @@ useEffect(()=>{const instance=atlas.current;if(!ready||!instance)return;
   const next=shortest<0.22?closest:'Таджикистан';
   setViewCity(current=>current===next?current:next);
   const sharedUrl=new URL(location.href);sharedUrl.pathname=mapPath(centre.lat,centre.lng,next);sharedUrl.searchParams.set('z',instance.map.getZoom().toFixed(2));history.replaceState(null,'',sharedUrl);
+  const parentOrigin=new URLSearchParams(location.search).get('parentOrigin');if(parentOrigin&&window.parent!==window)window.parent.postMessage({type:'cavi:view',lat:centre.lat,lon:centre.lng,zoom:instance.map.getZoom(),city:mapCitySlug(next)},parentOrigin);
   setTilted(instance.map.getPitch()>10);
   try{localStorage.setItem('atlas-view',JSON.stringify({center:[centre.lng,centre.lat],zoom:instance.map.getZoom(),bearing:instance.map.getBearing(),pitch:instance.map.getPitch()}))}catch{}};
  instance.map.on('moveend',settle);settle();
