@@ -16,7 +16,7 @@ const root=process.argv[2]?path.resolve(process.argv[2]):fileURLToPath(new URL('
 const urls=['/','/index.html','/route-worker.js','/route-rules.js','/road-graph.json','/places.json','/atlas-data/index.json','/favicon.svg','/manifest.webmanifest','/icon-192.png','/icon-512.png','/icon-maskable-512.png','/gps-help.html','/streets.json','/districts.json','/shaydon-buildings.json','/shaydon-osm-buildings.json','/atlas-houses/index.json','/atlas-roads/index.json','/atlas-things/index.json','/atlas-walks/index.json','/street-sources.html','/atlas-data/LICENSE.txt','/atlas-data/index.json?names=3'];
 // Saved on install when the build has them. road-routes.json is made by scripts/build-road-routes.py;
 // until then the map loads without road numbers, so a build without it must still install offline.
-const optional=['/road-routes.json'];
+const optional=['/road-routes.json','/cavi-sdk.js'];
 const fileOf=url=>path.join(root,url==='/'?'index.html':url.split('?')[0].slice(1));
 const sizeOf=async file=>{try{const info=await stat(file);return info.isFile()?info.size:null}catch{return null}};
 for(const url of optional){
@@ -35,7 +35,7 @@ let bytes=0;
 for(const url of urls){const size=await sizeOf(fileOf(url));if(size===null)throw Error(`Missing core file ${url} in ${root}`);bytes+=size}
 let dataDate=null;
 try{dataDate=JSON.parse(await readFile(fileOf('/atlas-data/index.json'),'utf8')).date??null}catch{}
-const manifest={version:'20260929-cavi2',dataDate,builtAt:new Date().toISOString().slice(0,10),bytes,urls};
+const manifest={version:'20261001-api1',dataDate,builtAt:new Date().toISOString().slice(0,10),bytes,urls};
 await writeFile(path.join(root,'offline-manifest.json'),JSON.stringify(manifest));
 
 // Sizes of the files a person can save for a city or for the whole routing graph (lib/offline-maps.ts).

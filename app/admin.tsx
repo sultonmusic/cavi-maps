@@ -1,3 +1,4 @@
+import {PartnerApiPanel} from '../components/partner-api-panel';
 import {siteUrl} from '@/lib/site-url';
 import {useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent} from 'react';
 import {Armchair, ArrowLeft, Building2, Check, ChevronLeft, Download, Droplets, Eye, Flag, Footprints, Lamp, Landmark, Layers, LocateFixed, LogOut, MapPin, MessageSquare, Minus, Mountain, MousePointer2, Pencil, Plus, Search, ShieldCheck, Sprout, Square, Store, Trash2, TreeDeciduous, Trees, Undo2, X} from 'lucide-react';
@@ -12,7 +13,7 @@ import {CITY_SIZES, isNarrowOutline, type SizeKey} from '../lib/city-objects.mjs
 import {isLanes, isOneway, type Lanes} from '../lib/lanes.mjs';
 import './admin.css';
 
-type Tab = 'roads' | 'districts' | 'businesses' | 'buildings' | 'city' | 'reviews';
+type Tab = 'roads' | 'districts' | 'businesses' | 'buildings' | 'city' | 'reviews' | 'api';
 type Selection = {kind: 'road' | 'district' | 'business' | 'building' | 'footprint' | 'city'; id: string} | null;
 /** A shipped footprint being given floors and a roof; the inputs stay text until they are saved. */
 type Footprint = {key: string; levels: string; height: string; roof: RoofShape | ''};
@@ -43,6 +44,7 @@ const TABS = [
   {id: 'businesses', title: 'Организации', icon: Store},
   {id: 'buildings', title: 'Здания', icon: Building2},
   {id: 'city', title: 'Благоустройство', icon: Trees},
+  {id: 'api', title: 'API', icon: ShieldCheck},
   {id: 'reviews', title: 'Отзывы', icon: MessageSquare},
 ] as const;
 const categories = [['food','Еда'],['shop','Магазин'],['hotel','Отель'],['health','Здоровье'],['fuel','АЗС'],['tourism','Достопримечательность'],['service','Услуги'],['other','Другое']];
@@ -403,6 +405,7 @@ export default function Admin() {
         {(visibleError||notice)&&<div className={`admin-message ${visibleError?'is-error':''}`} role={visibleError?'alert':'status'}><span>{visibleError||notice}</span><button aria-label="Закрыть сообщение" onClick={()=>{setProblem('');setNotice('');setDismissedError(live.error)}}><X size={15}/></button></div>}
         {selection?<div className="admin-editor-heading"><button className="admin-back" onClick={resetEditor}><ChevronLeft size={18}/>К списку</button><span>{selection.kind==='road'?'Редактор улицы':selection.kind==='district'?'Редактор микрорайона':selection.kind==='business'?'Карточка организации':selection.kind==='footprint'?'Высота и крыша':selection.kind==='city'?'Благоустройство':'Редактор здания'}</span></div>:<div className="admin-section-heading"><div><span className="admin-eyebrow">КАРТА ATLAS</span><h1>{TABS.find(item=>item.id===tab)?.title}</h1></div>{tab==='businesses'&&<button className="admin-button primary icon" aria-label="Добавить организацию" onClick={()=>{const value=newBusiness();selectBusiness(value,false);setPickMode('business')}}><Plus size={20}/></button>}{tab==='buildings'&&<button className="admin-button primary icon" aria-label="Добавить здание" onClick={()=>{const value=newBuilding();selectBuilding(value,false);setPickMode('building')}}><Plus size={20}/></button>}</div>}
 
+        {tab==='api'&&<PartnerApiPanel/>}
         {tab==='roads'&&selection?.kind==='road'&&selectedRoad?<form className="admin-form" onSubmit={saveStreet}>
           <div className="admin-object-caption"><MousePointer2 size={22}/><div><strong>{roadTitle(selectedRoad)}</strong><small>{selectedRoad.namingStatus==='proposed'?'Проектное название Atlas':'Название из исходных данных'}{selectedRoad.ref?` · ${selectedRoad.ref}`:''}</small></div></div>
           <label>Название улицы<input value={editName} onChange={event=>setEditName(event.target.value)} required maxLength={160}/></label>

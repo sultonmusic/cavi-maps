@@ -4,3 +4,6 @@ security/
 .firebase/
 *.log
 __pycache__/
+
+# Backend edits and API key digests belong on the persistent server disk.
+data/

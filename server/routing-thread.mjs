@@ -1,0 +1,10 @@
+import {parentPort, workerData} from 'node:worker_threads';
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
+const root=path.join(workerData.root,'public');
+const self={location:{href:'http://local/route-worker.js'},postMessage:message=>{if(message.id)parentPort.postMessage(message)}};
+const hidden=['process','require','module','exports','Buffer','global','globalThis'];
+const importScripts=()=>new Function('self',...hidden,readFileSync(path.join(root,'route-rules.js'),'utf8'))(self);
+const fetch=async url=>{const name=new URL(url).pathname.slice(1);if(!/^(road-graph|graph-(nodes|edges)-\d+)\.json$/.test(name))throw Error('Invalid graph path');return {ok:true,json:async()=>JSON.parse(readFileSync(path.join(root,name),'utf8'))}};
+new Function('self','importScripts','fetch',...hidden,readFileSync(path.join(root,'route-worker.js'),'utf8'))(self,importScripts,fetch);
+parentPort.on('message',data=>self.onmessage({data}));

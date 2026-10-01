@@ -1,3 +1,4 @@
+import {readMapUrl, mapPath} from '../lib/map-url';
 'use client';
 import {siteUrl} from '@/lib/site-url';
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
@@ -87,8 +88,17 @@ if(node.current){atlas.current=createAtlasGL(node.current,setError);atlas.curren
  try{const last=JSON.parse(localStorage.getItem('atlas-view')||'null');
   if(last&&Number.isFinite(last.center?.[0])&&Number.isFinite(last.center?.[1]))
    atlas.current.map.jumpTo({center:last.center,zoom:last.zoom??15,bearing:last.bearing??0,pitch:last.pitch??0})}catch{}
+ const shared=readMapUrl();if(shared)atlas.current.map.jumpTo(shared);
  setReady(true);atlas.current.ready.catch(()=>{if(!cancelled)setError('Не удалось загрузить карту. Обновите страницу.')})}
 return()=>{cancelled=true;destinationMarker.current?.remove();locationMarker.current?.remove();atlas.current?.destroy();atlas.current=null}},[]);
+useEffect(()=>{const restore=()=>{const shared=readMapUrl();if(shared)atlas.current?.map.jumpTo(shared)};window.addEventListener('popstate',restore);return()=>window.removeEventListener('popstate',restore)},[]);
+useEffect(()=>{const parentOrigin=new URLSearchParams(location.search).get('parentOrigin');if(!parentOrigin||window.parent===window)return;
+ const receive=(event:MessageEvent)=>{if(event.source!==window.parent||event.origin!==parentOrigin||event.data?.type!=='cavi:route')return;
+ const coordinates=event.data.coordinates;if(!Array.isArray(coordinates)||coordinates.length<2||coordinates.length>50000||coordinates.some(p=>!Array.isArray(p)||p.length!==2||!p.every(Number.isFinite)||p[0]<66||p[0]>76.5||p[1]<35.5||p[1]>42))return;
+ const instance=atlas.current;if(!instance)return;instance.ready.then(()=>{if(atlas.current!==instance)return;const map=instance.map,data={type:'Feature' as const,properties:{},geometry:{type:'LineString' as const,coordinates}};
+ const source=map.getSource('partner-route') as import('maplibre-gl').GeoJSONSource|undefined;if(source)source.setData(data);else{map.addSource('partner-route',{type:'geojson',data});map.addLayer({id:'partner-route',type:'line',source:'partner-route',paint:{'line-color':'#2563eb','line-width':6}})}
+ const bounds=coordinates.reduce((b,p)=>[Math.min(b[0],p[0]),Math.min(b[1],p[1]),Math.max(b[2],p[0]),Math.max(b[3],p[1])],[Infinity,Infinity,-Infinity,-Infinity]);map.fitBounds([[bounds[0],bounds[1]],[bounds[2],bounds[3]]],{padding:50});}).catch(()=>{});
+ };window.addEventListener('message',receive);window.parent.postMessage({type:'cavi:ready'},parentOrigin);return()=>window.removeEventListener('message',receive)},[ready]);
 useEffect(()=>{if(buildingData)atlas.current?.setBuildings(buildingData)},[buildingData]);
 // Profile switch «Подробные здания»: windows, roofs and street trees close in.
 useEffect(()=>onProfileChange(()=>atlas.current?.setBuildingDetail(readBuildingDetail())),[]);
@@ -182,6 +192,7 @@ useEffect(()=>{const instance=atlas.current;if(!ready||!instance)return;
   setCentre(current=>current[0]===centre.lng&&current[1]===centre.lat?current:[centre.lng,centre.lat]);
   const next=shortest<0.22?closest:'Таджикистан';
   setViewCity(current=>current===next?current:next);
+  const sharedUrl=new URL(location.href);sharedUrl.pathname=mapPath(centre.lat,centre.lng,next);sharedUrl.searchParams.set('z',instance.map.getZoom().toFixed(2));history.replaceState(null,'',sharedUrl);
   setTilted(instance.map.getPitch()>10);
   try{localStorage.setItem('atlas-view',JSON.stringify({center:[centre.lng,centre.lat],zoom:instance.map.getZoom(),bearing:instance.map.getBearing(),pitch:instance.map.getPitch()}))}catch{}};
  instance.map.on('moveend',settle);settle();

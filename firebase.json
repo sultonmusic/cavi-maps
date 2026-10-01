@@ -20,6 +20,10 @@
         {
           "source": "/gl{,/**}",
           "destination": "/index.html"
+        },
+        {
+          "source": "/Capline-Group/Maps/Tajikistan/**",
+          "destination": "/index.html"
         }
       ],
       "headers": [
@@ -42,6 +46,15 @@
             {
               "key": "Cache-Control",
               "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/assets/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=31536000,immutable"
             }
           ]
         }
@@ -63,6 +76,10 @@
         {
           "source": "/gl{,/**}",
           "destination": "/index.html"
+        },
+        {
+          "source": "/Capline-Group/Maps/Tajikistan/**",
+          "destination": "/index.html"
         }
       ],
       "headers": [
@@ -85,6 +102,15 @@
             {
               "key": "Cache-Control",
               "value": "no-cache, no-store, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/assets/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=31536000,immutable"
             }
           ]
         }

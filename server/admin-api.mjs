@@ -1,3 +1,4 @@
+import {createPartnerApi} from './partner-api.mjs';
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
@@ -14,7 +15,9 @@ export function createAdminApi({ root }) {
   const persist = mutator => { const task = queue.then(async () => { const next = structuredClone(state); const result = mutator(next); await mkdir(dataDir, { recursive: true }); const temp = `${dataFile}.${randomBytes(6).toString('hex')}.tmp`; await writeFile(temp, JSON.stringify(next), { mode: 0o600 }); await rename(temp, dataFile); state = next; notify(); return result; }); queue = task.catch(() => {}); return task; };
   const body = async req => { let size = 0, chunks = []; if (!String(req.headers['content-type']).startsWith('application/json')) throw Object.assign(new Error('Требуется JSON'), { status: 415 }); for await (const chunk of req) { size += chunk.length; if (size > 200000) throw Object.assign(new Error('Слишком большой запрос'), { status: 413 }); chunks.push(chunk); } try { const result = JSON.parse(Buffer.concat(chunks).toString()); if (!result || typeof result !== 'object' || Array.isArray(result)) throw new Error(); return result; } catch { throw new Error('Некорректный JSON'); } };
   const rateLimit = (key, maximum, duration) => { const now = Date.now(); if (limits.size > 10000) for (const [k,v] of limits) if (v.until < now) limits.delete(k); const value = limits.get(key); if (!value || value.until < now) limits.set(key, { count: 1, until: now + duration }); else if (++value.count > maximum) throw Object.assign(new Error('Слишком много попыток. Попробуйте позже.'), { status: 429 }); };
+  const partnerApi=createPartnerApi({root,authenticated,body,send});
   async function handleAdminApi(req, res) {
+    if(await partnerApi(req,res))return true;
     const url = new URL(req.url, 'http://localhost');
     if (!url.pathname.startsWith('/api/')) return false;
     try {
@@ -72,6 +75,6 @@ export function createAdminApi({ root }) {
     } catch (error) { if (!res.headersSent) send(res, error.status ?? 400, { error: error.message ?? 'Ошибка сервера' }); else res.end(); }
     return true;
   }
-  handleAdminApi.close = () => { for (const client of clients) client.res.end(); clients.clear(); };
+  handleAdminApi.close = () => { partnerApi.close(); for (const client of clients) client.res.end(); clients.clear(); };
   return handleAdminApi;
 }

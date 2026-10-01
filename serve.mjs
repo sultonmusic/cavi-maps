@@ -20,10 +20,10 @@ const handleRequest=async(req,res)=>{
  try {if(await adminApi(req,res))return} catch {res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'Ошибка сервера'}));return}
  if(!['GET','HEAD'].includes(req.method)){res.writeHead(405);res.end();return}
  let pathname;try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname)}catch{res.writeHead(400);res.end();return}
- const file=path.resolve(root,'.'+(['/', '/admin', '/admin/'].includes(pathname)?'/index.html':pathname));
+ const file=path.resolve(root,'.'+((['/', '/admin', '/admin/'].includes(pathname)||/^\/Capline-Group\/Maps\/Tajikistan\/[^/]+\/-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?\/?$/.test(pathname))?'/index.html':pathname));
  const relative=path.relative(root,file);
  if(relative.startsWith('..')||path.isAbsolute(relative)||!existsSync(file)||!statSync(file).isFile()){res.writeHead(404);res.end('Not found');return}
- res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream','Content-Length':statSync(file).size,'Cache-Control':'no-cache','X-Content-Type-Options':'nosniff'});
+ res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream','Content-Length':statSync(file).size,'Cache-Control':pathname.startsWith('/assets/')?'public, max-age=31536000, immutable':'no-cache','X-Content-Type-Options':'nosniff'});
  if(req.method==='HEAD')res.end();else{const stream=createReadStream(file);stream.on('error',()=>res.destroy());stream.pipe(res)}
 };
 let server;
@@ -34,8 +34,11 @@ try{
 server.on('error',e=>{console.error(e.code==='EADDRINUSE'?`Порт ${port} уже занят. Закройте предыдущий Cavi Maps или задайте PORT.`:e.message);process.exitCode=1});
 server.listen(port,'0.0.0.0',()=>{
  console.log(`\nCavi Maps — карта Таджикистана (by Capline Group)\nНа компьютере: ${protocol}://localhost:${port}`);
- for(const addresses of Object.values(networkInterfaces()))for(const a of addresses||[])if(a.family==='IPv4'&&!a.internal)console.log(`На телефоне в той же Wi-Fi сети: ${protocol}://${a.address}:${port}`);
+ let interfaces={};try{interfaces=networkInterfaces()}catch{}
+ for(const addresses of Object.values(interfaces))for(const a of addresses||[])if(a.family==='IPv4'&&!a.internal)console.log(`На телефоне в той же Wi-Fi сети: ${protocol}://${a.address}:${port}`);
  if(useHttps)console.log('\nДля GPS на телефоне сначала настройте доверие к локальному сертификату: GPS-HTTPS.md.');
  console.log('\nОставьте это окно открытым. Для остановки нажмите Ctrl+C.\n');
  if(process.argv.includes('--open')){const child=spawn('powershell.exe',['-NoProfile','-WindowStyle','Hidden','-Command',`Start-Process '${protocol}://localhost:${port}'`],{windowsHide:true,stdio:'ignore'});child.on('error',()=>{});child.unref()}
 });
+
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{adminApi.close();server.close(()=>process.exit(0));server.closeAllConnections()});
