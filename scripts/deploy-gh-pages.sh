@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 # Publishes the site to GitHub Pages from this computer (use when GitHub Actions cannot run).
-# Builds the /cavi-maps/ copy, force-pushes it to the gh-pages branch, then rebuilds dist/ for the root.
+# Builds for the current repository, publishes gh-pages, then rebuilds dist/ for the root.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out="$(mktemp -d)"
-MSYS_NO_PATHCONV=1 ATLAS_BASE=/cavi-maps/ npm run build
+atlas_remote="$(git remote get-url origin)"
+atlas_repo_name="${atlas_remote##*/}"
+atlas_repo_name="${atlas_repo_name%.git}"
+if [[ ! "$atlas_repo_name" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Cannot determine the Pages base from the origin repository name." >&2
+  exit 1
+fi
+MSYS_NO_PATHCONV=1 ATLAS_BASE="/${atlas_repo_name}/" npm run build
 cp -r dist/. "$out" && cp "$out/index.html" "$out/404.html" && touch "$out/.nojekyll"
 rev="$(git rev-parse --short HEAD)"
 git -C "$out" init -q -b gh-pages

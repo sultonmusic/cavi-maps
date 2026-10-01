@@ -77,3 +77,11 @@ const map = new CaviMap(document.getElementById('taxi-map'), {
 ## Проверка
 
 `npm run check`, `npm run build`, `node scripts/check-routing.mjs --real`, `node --test tests/partner-api.test.mjs`.
+
+## GitHub Pages после переноса в Capline-group/Maps
+
+Workflow автоматически берёт base из имени репозитория: `/cavi-maps/` в исходном репозитории и `/Maps/` в целевом. Локальный deploy-gh-pages.sh определяет тот же путь по origin. При копировании проекта сохраните полный код и public/ с данными, включите Actions, а в Settings → Pages выберите ветку gh-pages и папку / (root). Результирующий сайт имеет вид https://<owner>.github.io/<repository>/; наличие репозитория ещё не подтверждает публикацию сайта.
+
+GitHub репозиторий принадлежит username, а не Gmail адресу. Доступ к новой учётной записи GitHub должен быть подключён отдельно. `Capline-group/Maps` пока не доступен текущему connector: 404; перенос и запись в него не выполнены. Firebase Hosting для выбранного варианта не требуется, Firebase можно использовать отдельно для данных и Authentication после настройки новой базы и администратора.
+
+GitHub Pages не является безлимитным CDN: soft bandwidth limit — 100 GB в месяц (https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits). На бесплатном тарифе приватный репозиторий может не поддерживать Pages; проверьте доступность Pages в новом аккаунте.
