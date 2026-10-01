@@ -1,0 +1,25 @@
+{
+  "style": "asphalt",
+  "scope": "Shaydon R-303 and connecting bridge",
+  "source_date": "2026-09-06",
+  "bbox": [
+    70.32,
+    40.62,
+    70.43,
+    40.7
+  ],
+  "way_ids": [
+    "way/1148935963",
+    "way/1369363488",
+    "way/242752039",
+    "way/391146806",
+    "way/391146809"
+  ],
+  "matched_source_fragments": 18,
+  "styled_fragments": 14,
+  "bundles": [
+    "bundle-10-178-96.json",
+    "bundle-13-1424-770.json"
+  ],
+  "note": "Visual treatment requested by user. Source road surface is unspecified. Dashed centre lines are illustrative."
+}
