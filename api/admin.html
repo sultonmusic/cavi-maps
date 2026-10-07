@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Cavi Maps API — ключи</title>
+<style>
+  :root { --bg:#f4f5f2; --card:#fff; --ink:#1f2a27; --muted:#66706c; --line:#dfe3df; --brand:#00866a; --bad:#c43c33; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
+  header { background:var(--brand); color:#fff; padding:18px 16px; }
+  header h1 { margin:0; font-size:20px; }
+  header p { margin:4px 0 0; opacity:.85; font-size:13px; }
+  main { max-width:880px; margin:0 auto; padding:16px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  h2 { font-size:16px; margin:0 0 12px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:10px 0 4px; }
+  input, textarea, select { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px; font:inherit; background:#fff; color:inherit; }
+  textarea { min-height:70px; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
+  button { font:inherit; border:0; border-radius:8px; padding:9px 14px; cursor:pointer; background:var(--brand); color:#fff; }
+  button.ghost { background:#e8efec; color:var(--ink); }
+  button.danger { background:#fbe9e7; color:var(--bad); }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; font-size:12px; }
+  code, pre { font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace; }
+  pre { background:#f1f3f1; border-radius:8px; padding:10px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  .pill { display:inline-block; font-size:12px; padding:1px 8px; border-radius:10px; background:#e3f3ed; color:var(--brand); }
+  .pill.off { background:#f3e3e1; color:var(--bad); }
+  .status { margin-top:10px; font-size:13px; color:var(--muted); }
+  .status.err { color:var(--bad); }
+  .table-wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Cavi Maps API — ключи</h1>
+  <p>Ключ работает только на сайтах из его списка. Ключи хранятся в файле api/keys.json репозитория сайта.</p>
+</header>
+<main>
+  <section>
+    <h2>Новый ключ</h2>
+    <div class="row">
+      <div><label for="name">Название (для кого)</label><input id="name" placeholder="Например: Такси «Быстрое»"></div>
+    </div>
+    <label for="origins">Сайты, которым разрешён ключ — по одному в строке</label>
+    <textarea id="origins" placeholder="https://taxi.tj&#10;https://*.taxi.tj"></textarea>
+    <div class="actions"><button id="create">Создать ключ</button></div>
+    <div class="status" id="createStatus"></div>
+  </section>
+
+  <section>
+    <h2>Ключи</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Ключ</th><th>Название</th><th>Сайты</th><th>Статус</th><th></th></tr></thead>
+      <tbody id="list"><tr><td colspan="5">Загрузка…</td></tr></tbody>
+    </table></div>
+    <div class="actions">
+      <button id="save">Сохранить на сайте (GitHub)</button>
+      <button class="ghost" id="download">Скачать keys.json</button>
+    </div>
+    <div class="status" id="saveStatus">Изменения применяются после сохранения: сайт обновляется примерно за минуту.</div>
+  </section>
+
+  <section>
+    <h2>Подключение к GitHub (для сохранения)</h2>
+    <p class="status">Сохранение пишет файл api/keys.json прямо в репозиторий. Нужен токен GitHub (fine-grained, доступ <b>Contents: Read and write</b> только к этому репозиторию). Токен хранится только в этом браузере.</p>
+    <div class="row">
+      <div><label for="owner">Владелец</label><input id="owner"></div>
+      <div><label for="repo">Репозиторий</label><input id="repo"></div>
+      <div><label for="branch">Ветка сайта</label><input id="branch"></div>
+    </div>
+    <label for="token">Токен GitHub</label><input id="token" type="password" autocomplete="off" placeholder="github_pat_…">
+    <div class="actions"><button class="ghost" id="remember">Запомнить</button><button class="ghost" id="forget">Забыть токен</button></div>
+  </section>
+
+  <section>
+    <h2>Как подключить карту на сайте</h2>
+    <pre id="snippet"></pre>
+    <p class="status">Пример страницы такси: <a id="exampleLink" href="example.html">api/example.html</a></p>
+  </section>
+</main>
+<script>
+(function () {
+  'use strict';
+  var API = new URL('cavi-maps.js', location.href).href;
+  var $ = function (id) { return document.getElementById(id); };
+  var store = {
+    get: function (k, d) { try { return localStorage.getItem('cavi-api-' + k) || d; } catch (e) { return d; } },
+    set: function (k, v) { try { v ? localStorage.setItem('cavi-api-' + k, v) : localStorage.removeItem('cavi-api-' + k); } catch (e) {} }
+  };
+  var guessOwner = location.hostname.endsWith('.github.io') ? location.hostname.split('.')[0] : 'sultonmusic';
+  var guessRepo = location.pathname.split('/').filter(Boolean)[0] || 'cavi-maps';
+  $('owner').value = store.get('owner', guessOwner);
+  $('repo').value = store.get('repo', guessRepo);
+  $('branch').value = store.get('branch', 'gh-pages');
+  $('token').value = store.get('token', '');
+
+  var data = { keys: {} }, sha = null;
+  var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  function snippet(key) {
+    $('snippet').textContent =
+      '<div id="map" style="height:420px"></div>\n' +
+      '<script src="' + API + '"><\/script>\n' +
+      '<script>\n' +
+      '  const map = CaviMaps.create(document.getElementById("map"), { key: "' + (key || 'ВАШ_КЛЮЧ') + '", lat: 38.5737, lon: 68.7738, zoom: 13 });\n' +
+      '  // маршрут поездки: точка А -> точка Б (широта, долгота)\n' +
+      '  map.route({ from: [38.5806, 68.7739], to: [38.5598, 68.7870], mode: "car" })\n' +
+      '     .then(r => console.log("км:", r.meters / 1000, "мин:", Math.round(r.seconds / 60)));\n' +
+      '  map.on("click", p => console.log("выбрана точка", p.lat, p.lon));\n' +
+      '<\/script>';
+  }
+  function render() {
+    var rows = Object.keys(data.keys).map(function (k) {
+      var e = data.keys[k], on = e.active !== false;
+      return '<tr><td><code>' + esc(k) + '</code></td><td>' + esc(e.name || '') + '<br><small>' + esc(e.created || '') + '</small></td>' +
+        '<td>' + (e.origins || []).map(esc).join('<br>') + '</td>' +
+        '<td><span class="pill' + (on ? '' : ' off') + '">' + (on ? 'активен' : 'выключен') + '</span></td>' +
+        '<td><button class="ghost" data-act="code" data-key="' + esc(k) + '">Код</button> ' +
+        '<button class="ghost" data-act="toggle" data-key="' + esc(k) + '">' + (on ? 'Выключить' : 'Включить') + '</button> ' +
+        '<button class="danger" data-act="del" data-key="' + esc(k) + '">Удалить</button></td></tr>';
+    });
+    $('list').innerHTML = rows.join('') || '<tr><td colspan="5">Ключей пока нет.</td></tr>';
+  }
+  function status(id, text, err) { $(id).textContent = text; $(id).className = 'status' + (err ? ' err' : ''); }
+  function randomKey() {
+    var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', out = 'cm_', b = new Uint8Array(24);
+    crypto.getRandomValues(b);
+    for (var i = 0; i < b.length; i++) out += abc[b[i] % abc.length];
+    return out;
+  }
+  function normOrigin(line) {
+    line = line.trim();
+    if (!line) return null;
+    if (line === '*') return '*';
+    if (!/^https?:\/\//.test(line)) line = 'https://' + line;
+    var wild = line.indexOf('://*.') > 0;
+    try { var u = new URL(line.replace('://*.', '://wild-card.')); return u.origin.replace('://wild-card.', '://*.'); } catch (e) { return wild ? line : null; }
+  }
+
+  fetch('keys.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (j) { data = j && j.keys ? j : { keys: {} }; render(); }, function () { render(); });
+  snippet('');
+
+  $('create').onclick = function () {
+    var name = $('name').value.trim(), origins = $('origins').value.split(/\n|,/).map(normOrigin).filter(Boolean);
+    if (!name) return status('createStatus', 'Укажите название.', true);
+    if (!origins.length) return status('createStatus', 'Укажите хотя бы один сайт, например https://taxi.tj', true);
+    var key = randomKey();
+    data.keys[key] = { name: name, origins: origins, active: true, created: new Date().toISOString().slice(0, 10) };
+    render(); snippet(key);
+    status('createStatus', 'Ключ создан: ' + key + '. Нажмите «Сохранить на сайте», чтобы он заработал.');
+    $('name').value = ''; $('origins').value = '';
+  };
+  $('list').onclick = function (ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    var k = b.getAttribute('data-key'), act = b.getAttribute('data-act');
+    if (act === 'code') { snippet(k); $('snippet').scrollIntoView({ behavior: 'smooth' }); return; }
+    if (act === 'toggle') data.keys[k].active = data.keys[k].active === false;
+    if (act === 'del' && confirm('Удалить ключ ' + k + '? Сайты с этим ключом перестанут показывать карту.')) delete data.keys[k];
+    render(); status('saveStatus', 'Есть несохранённые изменения.');
+  };
+  var json = function () { return JSON.stringify(data, null, 2) + '\n'; };
+  $('download').onclick = function () {
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json()], { type: 'application/json' }));
+    a.download = 'keys.json'; a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  };
+  $('remember').onclick = function () {
+    ['owner', 'repo', 'branch', 'token'].forEach(function (k) { store.set(k, $(k).value.trim()); });
+    status('saveStatus', 'Настройки сохранены в этом браузере.');
+  };
+  $('forget').onclick = function () { store.set('token', ''); $('token').value = ''; status('saveStatus', 'Токен удалён из браузера.'); };
+  $('save').onclick = function () {
+    var owner = $('owner').value.trim(), repo = $('repo').value.trim(), branch = $('branch').value.trim() || 'gh-pages', token = $('token').value.trim();
+    if (!token) return status('saveStatus', 'Нужен токен GitHub (раздел ниже) — или скачайте keys.json и загрузите его в папку api/ репозитория.', true);
+    var url = 'https://api.github.com/repos/' + encodeURIComponent(owner) + '/' + encodeURIComponent(repo) + '/contents/api/keys.json';
+    var headers = { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' };
+    status('saveStatus', 'Сохраняем…');
+    fetch(url + '?ref=' + encodeURIComponent(branch), { headers: headers, cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : r.status === 404 ? {} : Promise.reject(Error('GitHub ответил ' + r.status)); })
+      .then(function (cur) {
+        sha = cur.sha || null;
+        var body = { message: 'API keys: update from admin page', content: btoa(unescape(encodeURIComponent(json()))), branch: branch };
+        if (sha) body.sha = sha;
+        return fetch(url, { method: 'PUT', headers: headers, body: JSON.stringify(body) });
+      })
+      .then(function (r) { return r.ok ? r.json() : r.json().then(function (j) { throw Error(j.message || ('GitHub ответил ' + r.status)); }); })
+      .then(function () { status('saveStatus', 'Сохранено. Ключи заработают на сайте примерно через минуту.'); })
+      .catch(function (e) { status('saveStatus', 'Не удалось сохранить: ' + e.message, true); });
+  };
+})();
+</script>
+</body>
+</html>
