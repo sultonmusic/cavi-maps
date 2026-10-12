@@ -274,7 +274,29 @@ for (const [streetGap, expected] of [[25, 25], [80, 10]]) {
   }
   assert.equal(countTurns(paths[0]), 3);
 }
-console.log('PASS: cost ordering, three distinct corridors, detour/overlap/separation/lane filters, time estimate, invalid/disconnected/same points, stale cancellation, per-mode networks and speeds, road classes, turn costs, edge snapping, one-way starts, reroute heading, stray fragments');
+// ---- Interchange gore: two one-way ramps meeting a two-way road at one node ----
+// A car coming down ramp A->J must not double back up ramp J->B at the same node (a turn of
+// ~170 degrees no car can make); it has to turn on the two-way road J-S and come back. The
+// search is per arc, so J reached down the ramp does not hide the arrival from S.
+{
+  const J = [38.58, 68.77], A = at(J, 200, -10), B = at(J, 200, 10), S = at(J, -300, 0);
+  const gore = graph([A, J, B, S], [[0, 1, 1], [1, 2, 1], [1, 3, 0]]);
+  const r = await gore.request(A, B, 1);
+  assert(!r.error, 'the gore has a legal way round: ' + r.error);
+  const reach = Math.max(...r.path.map(p => KLAT * (J[0] - p[0])));
+  assert(reach > 250, 'route must use the two-way road instead of the hairpin at the gore');
+}
+// ---- A target between two parallel one-way ramps: the reachable one wins, not the nearest ----
+// The point is 20 m from ramp F->B (reached only the long way round) and 26 m from ramp J->A1,
+// which the car is already on: the route ends on J->A1 instead of looping up to F and back.
+{
+  const J = [38.58, 68.77], A1 = at(J, 100, 0), F = at(J, 300, 6), B1 = at(J, 100, 6), target = at(J, 100, 26);
+  const twin = graph([J, A1, F, B1], [[0, 1, 1], [1, 2, 1], [2, 3, 1]]);
+  const r = await twin.request(at(J, 5, 0), target, 1);
+  assert(!r.error, 'twin ramps: ' + r.error);
+  assert(r.meters < 150, `the target goes to the ramp the car is on, not round the loop (${Math.round(r.meters)} m)`);
+}
+console.log('PASS: cost ordering, three distinct corridors, detour/overlap/separation/lane filters, time estimate, invalid/disconnected/same points, stale cancellation, per-mode networks and speeds, road classes, turn costs, edge snapping, one-way starts, reroute heading, stray fragments, no hairpin at a ramp gore, target on the reachable twin ramp');
 
 if (process.argv.includes('--real')) {
   // One cached national graph, loaded directly from chunks (no duplicate in runner).

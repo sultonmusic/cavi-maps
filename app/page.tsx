@@ -155,7 +155,7 @@ useEffect(()=>{const instance=atlas.current;if(!instance)return;
  if(selected?.tags['atlas:type']==='street'){const road=streetIndex.byId.get(selected.tags['atlas:road-id']);if(road)shape={type:'LineString',coordinates:road.coordinates}}
  else if(selected?.tags['atlas:type']==='district'){const area=districts.find(item=>item.id===selected.tags['atlas:district-id']);if(area)shape=area.geometry as SelectionGeometry}
  else if(selected?.tags['atlas:type']==='house'){shape=houseShape.current}
- instance.setSelection(shape)},[selected,ready,streetIndex,districts]);
+ instance.setSelection(shape,selected?.tags['atlas:type']==='street'?selected.tags['atlas:road-id']:undefined)},[selected,ready,streetIndex,districts]);
 useEffect(()=>{if(window.isSecureContext&&'serviceWorker' in navigator)navigator.serviceWorker.register(siteUrl('/sw.js')).catch(()=>{})},[]);
 // Every numbered footprint, searchable by street and number.
 const houseIndex=useMemo(()=>{

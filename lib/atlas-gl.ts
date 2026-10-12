@@ -19,7 +19,7 @@ import { bindSolid, composeMatrix, solidProgram, unbindSolid, type SolidProgram 
 import { LEAVES, SUN, block, blob, facet, rectangleAround, unit, type Rectangle, type Vec3 } from './mesh-kit.mjs'
 import { houseTone, liftedHeight, outlineTone } from './facades.mjs'
 import { BUILDING_COLOUR, BUILDING_LIGHT, detailLayer } from './detail-layer'
-import { ASPHALT_STOPS, carriagewayMetres, laneAt, laneLines, lanePieces, laneSegments, offsetLine, ribbon, streetAt, streetCrossings, zebra, type LaneSpot } from './lanes.mjs'
+import { ASPHALT_STOPS, LANE_METRES, carriagewayMetres, laneAt, laneLines, lanePieces, laneSegments, offsetLine, ribbon, streetAt, streetCrossings, totalLanes, zebra, type LaneSpot } from './lanes.mjs'
 import { keepRight, type Mode } from './travel.mjs'
 import { POI_COLOURS, POI_IMAGE_PREFIX, POI_MINZOOM, POI_RANK_FILTER, poiIconSizeExpression, poiLabelOffset } from './poi-icons.mjs'
 import { addPoiImage, poiIconBoxes, poiPlacement } from './poi-draw'
@@ -124,6 +124,21 @@ const asphaltWidth = (casing = false): unknown =>
 const FADE_OUT = ['step', ['zoom'], 1, 16, 0]
 const FADE_IN = ['step', ['zoom'], 0, 16, 1]
 const MARK_WIDTH = ['interpolate', ['linear'], ['zoom'], 16, 0.6, 19, 1.8]
+/* A selected lane, drawn 80% of a lane wide so neighbouring lanes stay apart. Pixels per metre at
+   zoom z are about 2^z / 61 170 at Tajikistan's latitude; the width depends on the zoom only. */
+const SELECTED_LANE_METRES = LANE_METRES * 0.8
+const SELECTED_LANE_WIDTH = ['interpolate', ['exponential', 2], ['zoom'], 13, 1.5, 16, Math.max(3, SELECTED_LANE_METRES * 2 ** 16 / 61170), 18, SELECTED_LANE_METRES * 2 ** 18 / 61170, 22, SELECTED_LANE_METRES * 2 ** 22 / 61170]
+/** One line per lane of a street, each in its travel direction: a one-way street's lanes side by
+    side across it, a two-way street's lanes on the right of each direction. */
+function selectedLanes(road: { coordinates: number[][]; asphalt: number; oneway?: boolean }) {
+  const oneway = !!road.oneway, total = totalLanes(road.asphalt, oneway)
+  if (total < 1 || road.coordinates.length < 2) return []
+  const lane = (line: number[][], offset: number, index: number) =>
+    ({ type: 'Feature' as const, properties: { lane: index }, geometry: { type: 'LineString' as const, coordinates: offsetLine(line, offset) } })
+  if (oneway) return Array.from({ length: total }, (_, i) => lane(road.coordinates, (i + 0.5 - total / 2) * LANE_METRES, i + 1))
+  const back = [...road.coordinates].reverse(), each = total / 2
+  return Array.from({ length: each }, (_, i) => [lane(road.coordinates, (i + 0.5) * LANE_METRES, i + 1), lane(back, (i + 0.5) * LANE_METRES, each + i + 1)]).flat()
+}
 
 const roadWidth = (casing = 0): unknown =>
   ['interpolate', ['exponential', 1.26], ['zoom'],
@@ -939,9 +954,15 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       },
       { id: 'selection-fill', type: 'fill', source: 'selection', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': '#3798db', 'fill-opacity': 0.1 } },
       {
-        id: 'selection-line', type: 'line', source: 'selection',
+        id: 'selection-line', type: 'line', source: 'selection', filter: ['!', ['has', 'lane']],
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: { 'line-color': '#3a92df', 'line-width': 7, 'line-opacity': 0.55 },
+      },
+      {
+        // A selected street with known lanes lights up lane by lane, each to scale with a gap between.
+        id: 'selection-lanes', type: 'line', source: 'selection', filter: ['has', 'lane'],
+        layout: { 'line-cap': 'butt', 'line-join': 'round' },
+        paint: { 'line-color': '#2f8ee6', 'line-width': SELECTED_LANE_WIDTH as never, 'line-opacity': 0.5 },
       },
       { id: 'route-accuracy', type: 'fill', source: 'routes', filter: ['==', ['get', 'role'], 'accuracy'], paint: { 'fill-color': '#2785e8', 'fill-opacity': 0.08 } },
       {
@@ -1299,6 +1320,7 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
       osmRoads.set(`way/${way}`, { id: `way/${way}`, asphalt: lanes, oneway: oneway === 1, coordinates })
     }
     showRoads()
+    if (selection.roadId) setSelection(selection.geometry, selection.roadId)
   }
 
   async function loadNearbyThings() {
@@ -1617,8 +1639,14 @@ export function createAtlasGL(node: HTMLElement, onError?: (message: string) => 
     setPoints(lastPoints)
   }
 
-  function setSelection(geometry: SelectionGeometry | null) {
-    push('selection', geometry ? { type: 'Feature', properties: {}, geometry } : EMPTY)
+  let selection: { geometry: SelectionGeometry | null; roadId?: string } = { geometry: null }
+  /** The selected shape; a street (`roadId`) whose lanes are known is drawn as its separate lanes. */
+  function setSelection(geometry: SelectionGeometry | null, roadId?: string) {
+    selection = { geometry, roadId }
+    const road = roadId ? adminRoads.find(item => item.id === roadId) ?? osmRoads.get(roadId) : undefined
+    const lanes = geometry?.type === 'LineString' && road ? selectedLanes(road) : []
+    push('selection', lanes.length ? { type: 'FeatureCollection', features: lanes }
+      : geometry ? { type: 'Feature', properties: {}, geometry } : EMPTY)
   }
 
   function setRoutes(routes: RouteLines | null) {

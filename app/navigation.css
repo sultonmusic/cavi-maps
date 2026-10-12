@@ -20,21 +20,6 @@
  .gps-status.is-hidden+.maneuver-card{top:calc(12px + env(safe-area-inset-top))}
 }
 
-/* Demo steering pad: a thumb-sized cross, pressed and held to drive. */
-/* Raised clear of the arrow, which the driving camera keeps low on screen. */
-.demo-pad{position:absolute;left:12px;bottom:calc(290px + env(safe-area-inset-bottom));z-index:21;display:grid;
- grid-template-columns:repeat(3,56px);grid-template-rows:repeat(3,56px);gap:5px;touch-action:none;
- user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
-.demo-pad button{display:grid;place-items:center;border-radius:15px;background:#ffffffd9;box-shadow:0 3px 14px #1d3a2c33;
- color:#15714a;touch-action:none;-webkit-tap-highlight-color:transparent;transition:transform .06s ease,background .06s ease}
-.demo-pad button:active{background:#d9efe2;transform:scale(.94)}
-.demo-forward{grid-column:2;grid-row:1}
-.demo-left{grid-column:1;grid-row:2}
-.demo-right{grid-column:3;grid-row:2}
-.demo-back{grid-column:2;grid-row:3}
-.demo-pad-label{grid-column:2;grid-row:2;display:grid;place-items:center;margin:8px;border-radius:50%;background:#1a7fe6;
- color:#fff;font:700 10px/1 Arial,sans-serif;letter-spacing:.6px;box-shadow:0 2px 8px #1a7fe655}
-@media(min-width:761px){.demo-pad{bottom:300px;left:20px}}
 
 /* The dock's action row carries up to four buttons on a phone. */
 .trip-actions{flex-wrap:wrap}

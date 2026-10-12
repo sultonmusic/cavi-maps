@@ -44,12 +44,14 @@ self.RouteRules = (() => {
   const MIN_COST_PER_METRE = { foot: 1, bike: 0.9, car: 3.6 / 90 + CAR_METRE_COST };
 
   /** Cost of turning at a node by `signedDeg` (positive to the right). Only junctions cost anything:
-      a bend in a single road is not a turn. Cars pay more for a left turn across the traffic. */
+      a bend in a single road is not a turn. Cars pay more for a left turn across the traffic.
+      A car turn of 135° or more at a junction is a U-turn: priced so a short detour is preferred
+      (the worker forbids it outright between two one-way roads, e.g. where interchange ramps meet). */
   function turnCost(mode, signedDeg, isJunction) {
     if (!isJunction) return 0;
     const a = Math.abs(signedDeg);
     if (a < 35) return 0;
-    if (mode === 'car') return a < 120 ? (signedDeg > 0 ? 4 : 8) : a < 170 ? 15 : 45;
+    if (mode === 'car') return a < 120 ? (signedDeg > 0 ? 4 : 8) : a < 135 ? 15 : 90;
     if (mode === 'bike') return a < 120 ? 25 : 60;
     return a < 120 ? 20 : 50;
   }

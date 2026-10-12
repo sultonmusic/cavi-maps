@@ -158,20 +158,46 @@ function network(g, name) {
   const offset = new Uint32Array(n + 1);
   for (let i = 0; i < n; i++) offset[i + 1] = offset[i] + degree[i];
   const to = new Uint32Array(offset[n]), weight = new Float32Array(offset[n]), cursor = offset.slice(0, n);
+  const src = new Uint32Array(offset[n]), one = new Uint8Array(offset[n]);
   let minRate = Infinity;
   for (let i = 0; i < m; i++) {
     const flags = g.edgeFlags[i];
     if (flags & rule.closed) continue;
     const a = g.edgeFrom[i], b = g.edgeTo[i], d = g.edgeLength[i], w = R.edgeCost(mode, flags, d);
     if (d > 0 && w / d < minRate) minRate = w / d;
-    let j = cursor[a]++; to[j] = b; weight[j] = w;
-    if (!(flags & rule.oneway)) { j = cursor[b]++; to[j] = a; weight[j] = w; }
+    let j = cursor[a]++; to[j] = b; weight[j] = w; src[j] = a; one[j] = flags & rule.oneway ? 1 : 0;
+    if (!(flags & rule.oneway)) { j = cursor[b]++; to[j] = a; weight[j] = w; src[j] = b; }
   }
   if (!Number.isFinite(minRate)) minRate = R.MIN_COST_PER_METRE[mode];
   // A phone keeps two networks at most.
   const built = Object.keys(g.networks);
   if (built.length >= 2) delete g.networks[built[0]];
-  return g.networks[mode] = { mode, rule, offset, to, weight, links, comp, main, minRate };
+  return g.networks[mode] = { mode, rule, offset, to, weight, src, one, links, comp, main, minRate };
+}
+/** Other usable edges about as close to point `p` as the chosen snap `T` (at most 10 m further),
+    nearest first: parallel carriageways and ramps a few metres apart. The best of them is chosen by
+    route cost, since only one may be reachable without a long way round. */
+function snapTwins(g, net, p, T, max = 2) {
+  if (T.gap > 400) return [];
+  const { lat, lon, edgeFrom, edgeTo, edgeFlags } = g, { cell, cols, rows, x0, y0, start, edges } = g.grid;
+  const reach = T.gap + 10, kx = KLAT * Math.max(0.01, Math.cos(p[0] * RAD)), piece = pieceOf(net, T.u), found = [];
+  const ya = Math.max(0, Math.floor((p[0] - reach / KLAT) / cell) - y0), yb = Math.min(rows - 1, Math.floor((p[0] + reach / KLAT) / cell) - y0);
+  const xa = Math.max(0, Math.floor((p[1] - reach / kx) / cell) - x0), xb = Math.min(cols - 1, Math.floor((p[1] + reach / kx) / cell) - x0);
+  const seen = new Set([T.edge]);
+  for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) {
+    const c = y * cols + x;
+    for (let k = start[c]; k < start[c + 1]; k++) {
+      const e = edges[k], flags = edgeFlags[e];
+      if (seen.has(e) || flags & net.rule.closed) continue;
+      seen.add(e);
+      const u = edgeFrom[e], v = edgeTo[e];
+      if (pieceOf(net, u) !== piece) continue;
+      const ax = (lon[u] - p[1]) * kx, ay = (lat[u] - p[0]) * KLAT, dx = (lon[v] - lon[u]) * kx, dy = (lat[v] - lat[u]) * KLAT;
+      const L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0, gap = Math.hypot(ax + t * dx, ay + t * dy);
+      if (gap <= reach) found.push({ e, flags, gap, t, u, v });
+    }
+  }
+  return found.sort((a, b) => a.gap - b.gap).slice(0, max).map(c => snapped(g, net, c));
 }
 const pieceOf = (net, i) => net.comp[i] < 0 ? i : net.comp[i];
 const pieceSize = (net, root) => -net.comp[root];
@@ -219,8 +245,11 @@ function snapEdge(g, net, p, heading = null, piece = -1) {
   // Wider only as far as needed: a scan of the full 1.5 km reads thousands of city edges.
   let radius = NEAR_SCAN, found = scan(radius);
   while (!found.sure && radius < MAX_GAP) found = scan(radius = Math.min(MAX_GAP, Math.max(found.enough, 2 * radius)));
-  const c = found.chosen;
-  if (!c) return null;
+  return found.chosen ? snapped(g, net, found.chosen) : null;
+}
+/** A snap result for edge candidate `c` ({e, flags, gap, t, u, v}). */
+function snapped(g, net, c) {
+  const { lat, lon, edgeLength } = g, rule = net.rule, mode = net.mode;
   const length = edgeLength[c.e], point = c.t <= 0 ? [lat[c.u], lon[c.u]] : c.t >= 1 ? [lat[c.v], lon[c.v]]
     : [lat[c.u] + (lat[c.v] - lat[c.u]) * c.t, lon[c.u] + (lon[c.v] - lon[c.u]) * c.t];
   return {
@@ -231,9 +260,8 @@ function snapEdge(g, net, p, heading = null, piece = -1) {
   };
 }
 
-function scratch(g) {
-  const n = g.lat.length;
-  if (!g.scratch || g.scratch.scores.length !== n) g.scratch = { scores: new Float64Array(n), previous: new Int32Array(n), closed: new Uint8Array(n), heap: new Heap() };
+function scratch(g, size) {
+  if (!g.scratch || g.scratch.scores.length !== size) g.scratch = { scores: new Float64Array(size), previous: new Int32Array(size), closed: new Uint8Array(size), heap: new Heap() };
   return g.scratch;
 }
 /** Signed turn at node a coming from `from` and leaving for b, degrees, positive to the right. */
@@ -257,11 +285,16 @@ const endPart = (T, node) => (node === T.u ? T.t : 1 - T.t) * T.cost;
 const arcKey = (n, a, b) => a < b ? a * n + b : b * n + a;
 
 /** A* from the start point to the target point, both lying on edges. Costs are the rules' edge
-    costs (times penalties, for alternatives) plus turn costs. Returns {ids, cost} or null. */
+    costs (times penalties, for alternatives) plus turn costs. Returns {ids, cost} or null.
+    The search runs over arcs (which road a node was reached by), not bare nodes: at a junction
+    the best way to arrive depends on where the route leaves, so a node reached cheaply down one
+    ramp must not hide the straight arrival that the next ramp needs. The two extra states are
+    the start point's ends. */
 async function search(g, net, S, T, check, penalties = null, cutoff = Infinity) {
-  const { scores, previous, closed, heap } = scratch(g), n = g.lat.length;
+  const { offset, to, weight, src, one, links } = net, M = to.length, n = g.lat.length;
+  const { scores, previous, closed, heap } = scratch(g, M + 2);
   scores.fill(Infinity); previous.fill(-1); closed.fill(0); heap.size = 0;
-  const { lat, lon } = g, { offset, to, weight, links } = net;
+  const { lat, lon } = g;
   const tLat = T.point[0], tLon = T.point[1];
   // Straight distance times the cheapest cost of a metre never overestimates; long trips accept
   // a route at most a fifth dearer to settle far fewer nodes.
@@ -270,35 +303,48 @@ async function search(g, net, S, T, check, penalties = null, cutoff = Infinity) 
     const dy = (lat[i] - tLat) * KLAT, dx = (lon[i] - tLon) * KLAT * Math.cos((lat[i] + tLat) * 0.5 * RAD);
     return Math.sqrt(dx * dx + dy * dy) * rate;
   };
-  const seeds = new Map();
-  const seed = (node, cost) => { if (cost < scores[node]) { scores[node] = cost; seeds.set(node, startFrom(S, node)); heap.push(cost + h(node), node); } };
-  seed(S.v, (1 - S.t) * S.cost);
-  if (!S.oneway || S.atU) seed(S.u, S.t * S.cost);
+  const seedNode = [S.v, S.u], seedFrom = [startFrom(S, S.v), startFrom(S, S.u)];
+  const nodeOf = x => x < M ? to[x] : seedNode[x - M];
+  const fromOf = x => x < M ? src[x] : seedFrom[x - M];
+  const onewayIn = x => x < M ? one[x] === 1 : S.oneway;
+  const seed = (x, cost) => { if (cost < scores[x]) { scores[x] = cost; heap.push(cost + h(nodeOf(x)), x); } };
+  seed(M, (1 - S.t) * S.cost);
+  if (!S.oneway || S.atU) seed(M + 1, S.t * S.cost);
   let bestT = Infinity, end = -1, count = 0;
   if (S.edge === T.edge && (!S.oneway || T.t >= S.t)) { bestT = Math.abs(T.t - S.t) * S.cost; end = -2; }
   const intoV = !T.oneway || T.atV;
+  const hairpin = net.mode === 'car';
   while (heap.size) {
-    const priority = heap.prio[0], a = heap.pop();
+    const priority = heap.prio[0], x = heap.pop();
     if (priority >= bestT || priority > cutoff) break;
-    if (closed[a]) continue;
-    closed[a] = 1;
-    const from = previous[a] >= 0 ? previous[a] : seeds.get(a) ?? -1;
-    if (a === T.u) { const c = scores[a] + turnCost(g, net, from, a, endTowards(T, a)) + endPart(T, a); if (c < bestT) { bestT = c; end = a; } }
-    if (a === T.v && intoV) { const c = scores[a] + turnCost(g, net, from, a, endTowards(T, a)) + endPart(T, a); if (c < bestT) { bestT = c; end = a; } }
+    if (closed[x]) continue;
+    closed[x] = 1;
+    const a = nodeOf(x), from = fromOf(x), inOneway = onewayIn(x);
+    // Arriving onto the target's edge obeys the same gore rule as any other turn, unless the target
+    // lies within 30 m of the junction: then the route simply ends there instead of going round.
+    const goreBack = b => hairpin && inOneway && T.oneway && from >= 0 && b >= 0 && b !== from && links[a] >= 3 &&
+      Math.abs(turnAt(g, from, a, b)) >= 135 && (a === T.u ? T.t : 1 - T.t) * T.length > 30;
+    if (a === T.u && !goreBack(endTowards(T, a))) { const c = scores[x] + turnCost(g, net, from, a, endTowards(T, a)) + endPart(T, a); if (c < bestT) { bestT = c; end = x; } }
+    if (a === T.v && intoV && !goreBack(endTowards(T, a))) { const c = scores[x] + turnCost(g, net, from, a, endTowards(T, a)) + endPart(T, a); if (c < bestT) { bestT = c; end = x; } }
     const junction = from >= 0 && links[a] >= 3;
     for (let j = offset[a], last = offset[a + 1]; j < last; j++) {
+      if (closed[j]) continue;
       const b = to[j];
-      if (closed[b]) continue;
       let w = weight[j];
       if (penalties !== null) { const f = penalties.get(arcKey(n, a, b)); if (f !== undefined) w *= f; }
       // Turning back is only for the end of a road.
       if (b === from) { if (links[a] > 1) continue; w += R.turnCost(net.mode, 180, true); }
-      else if (junction) w += R.turnCost(net.mode, turnAt(g, from, a, b), true);
-      const score = scores[a] + w;
-      if (score < scores[b]) {
+      else if (junction) {
+        const t = turnAt(g, from, a, b);
+        // Doubling back from one one-way road onto another (the gore where two ramps meet) is not a turn a car can make.
+        if (hairpin && inOneway && one[j] === 1 && Math.abs(t) >= 135) continue;
+        w += R.turnCost(net.mode, t, true);
+      }
+      const score = scores[x] + w;
+      if (score < scores[j]) {
         const p = score + h(b);
         if (p >= bestT || p > cutoff) continue;
-        scores[b] = score; previous[b] = a; heap.push(p, b);
+        scores[j] = score; previous[j] = x; heap.push(p, j);
       }
     }
     if (++count % 8192 === 0) { await pause(); check(); }
@@ -306,7 +352,7 @@ async function search(g, net, S, T, check, penalties = null, cutoff = Infinity) 
   check();
   if (end === -1 || bestT > cutoff) return null;
   const ids = [];
-  if (end >= 0) { for (let a = end; a !== -1; a = previous[a]) ids.push(a); ids.reverse(); }
+  if (end >= 0) { for (let x = end; x !== -1; x = previous[x]) ids.push(nodeOf(x)); ids.reverse(); }
   return { ids, cost: bestT, settled: count };
 }
 /** The cheapest arc a -> b in the network. */
@@ -404,7 +450,13 @@ self.onmessage = async ({ data }) => {
     const noPath = 'Между точками не найден связный путь для выбранного способа передвижения.';
     if (pieceOf(net, S.u) !== pieceOf(net, T.u)) throw Error(noPath);
     const started = Date.now(), snapMs = started - snapStarted;
-    const first = await search(g, net, S, T, check);
+    let first = await search(g, net, S, T, check);
+    // A target between parallel ramps or carriageways goes to whichever of them is reached cheaper.
+    for (const T2 of snapTwins(g, net, data.end, T)) {
+      if (S.edge === T2.edge) continue;
+      const other = await search(g, net, S, T2, check, null, first ? first.cost : Infinity);
+      if (other && (!first || other.cost < first.cost)) { first = other; T = T2; }
+    }
     if (!first) throw Error(noPath);
     const firstMs = Date.now() - started;
     const best = finish(g, net, S, T, first);
